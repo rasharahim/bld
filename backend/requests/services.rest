@@ -3,10 +3,11 @@ POST http://localhost:5000/api/auth/register
 Content-Type: application/json
 
 {
-  "username": "testuser",
+  "fullname": "testuser",
+  "phoneNumber": "1234567",
   "email": "test@example.com",
-  "password": "password123",
-  "name": "Test User"
+  "password": "password123"
+  
 }
 
 ### Login with the registered user
@@ -14,6 +15,6 @@ POST http://localhost:5000/api/auth/login
 Content-Type: application/json
 
 {
-  "username": "testuser",
+  "email": "testuser",
   "password": "password123"
 }

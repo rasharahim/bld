@@ -2,6 +2,7 @@ $primary-color: #b30000;
 $secondary-color: #8c0000;
 
 .Login {
+  margin: 0;
   height: 100vh;
   background: rgb(106,0,0);
   background: radial-gradient(circle, rgba(106,0,0,1) 28%, rgba(204,44,44,1) 100%);
@@ -45,6 +46,7 @@ $secondary-color: #8c0000;
         width: 50%;
         padding: 10px;
         border: none;
+        justify-content: center;
         background-color: white;
         border-radius: 10px;
         color: $primary-color;
@@ -97,6 +99,7 @@ $secondary-color: #8c0000;
           border-radius: 10px;
           color: white;
           font-weight: bold;
+          justify-content: center;
           cursor: pointer;
           transition: background-color 0.3s ease;
 

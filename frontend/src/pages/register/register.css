@@ -59,6 +59,7 @@ body{
                 border-radius: 10px;
                 color: brown;
                 font-weight: bold;
+                justify-content: center;
                 cursor: pointer;
             }
         }
@@ -90,6 +91,7 @@ body{
                 border-radius: 10px;
                 color: white;
                 font-weight: bold;
+                justify-content: center;
                 cursor: pointer;
                 }
             }
