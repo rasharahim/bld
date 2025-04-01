@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import "./ProfileStyles.css";
 
 const ProfilePage = () => {
@@ -7,8 +8,9 @@ const ProfilePage = () => {
     age: "28",
     bloodType: "O+",
     contactNumber: "+1 (555) 123-4567",
-    dateOfBirth: "1995-01-15", // Added date of birth field
+    dateOfBirth: "1995-01-15",
     profilePicture: null,
+    isAvailable: true // Added donor availability status
   });
 
   const [editMode, setEditMode] = useState(false);
@@ -16,19 +18,48 @@ const ProfilePage = () => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Format date for display
   const formatDate = (dateString) => {
     const options = { year: 'numeric', month: 'long', day: 'numeric' };
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-  // Simulate loading activities
   useEffect(() => {
     const timer = setTimeout(() => {
       setActivities([
-        { id: 1, type: "Donation", date: "2023-05-15", location: "City Blood Bank" },
-        { id: 2, type: "Request", date: "2023-04-22", status: "Completed" },
-        { id: 3, type: "Donation", date: "2023-03-10", location: "Community Center" }
+        { 
+          id: 1, 
+          type: "Donation", 
+          date: "2023-05-15", 
+          location: "City Blood Bank", 
+          status: "Completed", 
+          isPending: false 
+        },
+        { 
+          id: 2, 
+          type: "Request", 
+          date: "2023-04-22", 
+          status: "Completed", 
+          isPending: false 
+        },
+        { 
+          id: 3, 
+          type: "Request", 
+          date: "2023-03-10", 
+          location: "Community Center", 
+          status: "Pending Approval", 
+          isPending: true,
+          hospital: "Metropolitan Hospital",
+          bloodType: "O+",
+          quantity: "1 unit"
+        },
+        { 
+          id: 4, 
+          type: "Donation", 
+          date: "2023-06-01", 
+          location: "Central Blood Bank",
+          status: "Available for Donation", 
+          isPending: true
+        }
       ]);
       setLoading(false);
     }, 1000);
@@ -53,19 +84,33 @@ const ProfilePage = () => {
 
   const handleSaveProfile = () => {
     setEditMode(false);
-    // Here you would typically call an API to save changes
     alert("Profile updated successfully!");
   };
 
   const handlePasswordUpdate = () => {
-    // Password update logic would go here
     alert("Password updated successfully!");
     setPasswords({ oldPassword: "", newPassword: "" });
   };
 
   const handleLogout = () => {
-    // Logout logic would go here
     alert("Logged out successfully!");
+  };
+
+  const toggleAvailability = () => {
+    const newStatus = !user.isAvailable;
+    setUser({ ...user, isAvailable: newStatus });
+    alert(`You are now ${newStatus ? 'available' : 'unavailable'} as a donor`);
+  };
+
+  const handleCancelRequest = (requestId) => {
+    if (window.confirm("Are you sure you want to cancel this request?")) {
+      setActivities(activities.map(activity => 
+        activity.id === requestId 
+          ? { ...activity, status: "Cancelled", isPending: false }
+          : activity
+      ));
+      alert("Request cancelled successfully");
+    }
   };
 
   return (
@@ -75,6 +120,9 @@ const ProfilePage = () => {
           <h2>My Profile</h2>
           <div className="profile-status">
             <span className="status-badge active">Active Donor</span>
+            {user.isAvailable && (
+              <span className="availability-badge available">Available to Donate</span>
+            )}
           </div>
         </div>
 
@@ -195,7 +243,6 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          {/* Rest of your components remain the same */}
           <div className="security-section">
             <h3>Account Security</h3>
             <div className="password-form">
@@ -232,29 +279,118 @@ const ProfilePage = () => {
           <div className="activities-section">
             <h3>My Activities</h3>
             {loading ? (
-              <div className="loading-spinner"></div>
-            ) : activities.length > 0 ? (
-              <div className="activities-list">
-                {activities.map(activity => (
-                  <div key={activity.id} className="activity-card">
-                    <div className="activity-icon">
-                      {activity.type === "Donation" ? (
-                        <i className="fas fa-heart"></i>
-                      ) : (
-                        <i className="fas fa-hand-holding-heart"></i>
-                      )}
-                    </div>
-                    <div className="activity-details">
-                      <h4>{activity.type}</h4>
-                      <p>{new Date(activity.date).toLocaleDateString()}</p>
-                      {activity.location && <p>{activity.location}</p>}
-                      {activity.status && <span className={`status ${activity.status.toLowerCase()}`}>{activity.status}</span>}
+              <div className="loading-spinner">Loading activities...</div>
+            ) : (
+              <>
+                {activities.filter(a => a.isPending).length > 0 && (
+                  <div className="pending-section">
+                    <h4>Pending Actions</h4>
+                    <div className="activities-list">
+                      {activities
+                        .filter(activity => activity.isPending)
+                        .map(activity => (
+                          <div key={`pending-${activity.id}`} className={`activity-card pending ${activity.type.toLowerCase()}`}>
+                            <div className="activity-icon">
+                              {activity.type === "Donation" ? (
+                                <i className="fas fa-tint"></i>
+                              ) : (
+                                <i className="fas fa-hand-holding-medical"></i>
+                              )}
+                            </div>
+                            <div className="activity-details">
+                              <div className="activity-header">
+                                <h4>{activity.type}</h4>
+                                <span className="activity-date">
+                                  {new Date(activity.date).toLocaleDateString()}
+                                </span>
+                              </div>
+                              {activity.location && <p>Location: {activity.location}</p>}
+                              {activity.hospital && <p>Hospital: {activity.hospital}</p>}
+                              {activity.bloodType && <p>Blood Type: {activity.bloodType}</p>}
+                              {activity.quantity && <p>Quantity: {activity.quantity}</p>}
+                              <div className="activity-footer">
+                                <span className={`status ${activity.status.toLowerCase().replace(' ', '-')}`}>
+                                  {activity.status}
+                                </span>
+                                
+                                {activity.type === "Donation" && (
+                                  <button 
+                                    className={`availability-btn ${user.isAvailable ? 'available' : 'unavailable'}`}
+                                    onClick={toggleAvailability}
+                                  >
+                                    {user.isAvailable ? 'Make Unavailable' : 'Make Available'}
+                                  </button>
+                                )}
+                                
+                                {activity.type === "Request" && (
+                                  <button 
+                                    className="cancel-request-btn"
+                                    onClick={() => handleCancelRequest(activity.id)}
+                                  >
+                                    Cancel Request
+                                  </button>
+                                )}
+                                
+                                <Link
+                                  to={activity.type === "Request" ? 
+                                      `/request-status/${activity.id}` : 
+                                      `/donation-status/${activity.id}`}
+                                  className="status-btn"
+                                >
+                                  Check Status
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="no-activities">No activities found</p>
+                )}
+
+                <h4>All Activities</h4>
+                {activities.length > 0 ? (
+                  <div className="activities-list">
+                    {activities.map(activity => (
+                      <div key={activity.id} className={`activity-card ${activity.type.toLowerCase()}`}>
+                        <div className="activity-icon">
+                          {activity.type === "Donation" ? (
+                            <i className="fas fa-tint"></i>
+                          ) : (
+                            <i className="fas fa-hand-holding-medical"></i>
+                          )}
+                        </div>
+                        <div className="activity-details">
+                          <div className="activity-header">
+                            <h4>{activity.type}</h4>
+                            <span className="activity-date">
+                              {new Date(activity.date).toLocaleDateString()}
+                            </span>
+                          </div>
+                          {activity.location && <p>Location: {activity.location}</p>}
+                          {activity.hospital && <p>Hospital: {activity.hospital}</p>}
+                          <div className="activity-footer">
+                            <span className={`status ${activity.status.toLowerCase().replace(' ', '-')}`}>
+                              {activity.status}
+                            </span>
+                            {activity.status.includes("Pending") && (
+                              <Link
+                                to={activity.type === "Request" ? 
+                                    `/request-status/${activity.id}` : 
+                                    `/donation-status/${activity.id}`}
+                                className="status-btn"
+                              >
+                                Check Status
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="no-activities">No activities found</p>
+                )}
+              </>
             )}
           </div>
 

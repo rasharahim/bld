@@ -22,8 +22,8 @@ const Dashboard = () => {
 
   const navLinks = [
     { path: '/home', name: 'Home', icon: 'fa-home' },
-    { path: '/donate', name: 'Donate', icon: 'fa-tint' },
-    { path: '/requestblood', name: 'Request Blood', icon: 'fa-hand-holding-medical' },
+    { path: '/donor-form', name: 'Donate', icon: 'fa-tint' },
+    { path: '/receiver-form', name: 'Request Blood', icon: 'fa-hand-holding-medical' },
     { path: '/profile', name: 'My Profile', icon: 'fa-user' }
   ];
 

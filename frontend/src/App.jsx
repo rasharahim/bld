@@ -6,9 +6,16 @@ import Register from './pages/register/Register';
 import Home from './pages/home/Home';
 import Info from './pages/info/Info';
 import ForgotPassword from './pages/forgotpassword/ForgotPassword';
-import Donate from './pages/donate/Donate';
-import RequestBlood from './pages/requestblood/RequestBlood';
-import Profile from "./pages/profile/Profile";        
+//import Donate from './pages/donate/Donate';
+//import RequestBlood from './pages/requestblood/RequestBlood';
+import Profile from "./pages/profile/Profile"; 
+import DonorForm from './pages/forms/donor/DonorForm';       
+import ReceiverForm from "./pages/forms/receiver/ReceiverForm"; 
+import ReceiverThanks from "./pages/forms/receiver/ReceiverThanks";
+import RequestStatus from "./pages/forms/receiver/RequestStatus";
+import DonorStatusPage from './pages/forms/donor/DonorStatus';
+import DonorThanks from "./pages/forms/donor/DonorThanks";
+
 
 
 
@@ -34,9 +41,16 @@ const App = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/info" element={<Info />} />
         <Route path="/" element={<Login />} />
-        <Route path="/donate" element={<Donate />} />
-        <Route path="/requestblood" element={<RequestBlood />} />
+        {/*<Route path="/donate" element={<Donate />} /> */}
+        <Route path="/donor-form" element={<DonorForm />} />
+        <Route path="/donor-thanks" element={<DonorThanks />} />
+        <Route path="/donor-status" element={<DonorStatusPage />} />
+        <Route path="/receiver-form" element={<ReceiverForm />} />
+        <Route path="/receiver-thanks" element={<ReceiverThanks />} />
+        <Route path="/request-status" element={<RequestStatus />} />
         <Route path="/profile" element={<Profile />} />
+        
+        
       </Routes>
     </>
   );

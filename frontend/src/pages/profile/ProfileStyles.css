@@ -9,8 +9,13 @@
   --warning: #e9c46a;
   --danger: #e63946;
   --white: #ffffff;
+  --available: #d4edda;
+  --available-text: #155724;
+  --unavailable: #fff3cd;
+  --unavailable-text: #856404;
+  --cancel: #f8d7da;
+  --cancel-text: #721c24;
 }
-
 
 * {
   margin: 0; 
@@ -23,12 +28,12 @@
 }
 
 .profile-layout {
-  padding: 80px 2rem 2rem 2rem; /* Top padding accounts for dashboard */
+  padding: 80px 2rem 2rem 2rem;
   display: flex;
   justify-content: center;
   background-color: #f5f7fa;
   min-height: 100vh;
-  margin-top: 60px; /* Matches dashboard height */
+  margin-top: 60px;
 }
 
 .profile-container {
@@ -64,6 +69,20 @@
   background-color: var(--success);
 }
 
+/* Availability Badge */
+.availability-badge {
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.availability-badge.available {
+  background-color: var(--available);
+  color: var(--available-text);
+}
+
 .profile-content {
   padding: 2rem;
 }
@@ -92,7 +111,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #f0f0f0; /* Fallback if no image */
+  background-color: #f0f0f0;
 }
 
 .profile-picture img {
@@ -101,7 +120,6 @@
   object-fit: cover;
   display: block;
 }
-
 
 .picture-upload-btn {
   position: absolute;
@@ -299,6 +317,10 @@ button {
   font-size: 1.2rem;
 }
 
+.activity-details {
+  flex: 1;
+}
+
 .activity-details h4 {
   color: var(--dark);
   margin-bottom: 0.3rem;
@@ -307,6 +329,16 @@ button {
 .activity-details p {
   color: #666;
   font-size: 0.9rem;
+  margin: 0.2rem 0;
+}
+
+/* Activity Footer with Action Buttons */
+.activity-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
 }
 
 .status {
@@ -315,17 +347,60 @@ button {
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 500;
-  margin-top: 0.5rem;
 }
 
 .status.completed {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: var(--available);
+  color: var(--available-text);
 }
 
 .status.pending {
-  background-color: #fff3cd;
-  color: #856404;
+  background-color: var(--unavailable);
+  color: var(--unavailable-text);
+}
+
+.status.cancelled {
+  background-color: var(--cancel);
+  color: var(--cancel-text);
+}
+
+/* Action Buttons */
+.availability-btn, 
+.cancel-request-btn,
+.status-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.availability-btn {
+  background-color: var(--available);
+  color: var(--available-text);
+}
+
+.availability-btn.unavailable {
+  background-color: var(--unavailable);
+  color: var(--unavailable-text);
+}
+
+.cancel-request-btn {
+  background-color: var(--cancel);
+  color: var(--cancel-text);
+}
+
+.status-btn {
+  background-color: var(--secondary);
+  color: white;
+}
+
+.availability-btn:hover, 
+.cancel-request-btn:hover,
+.status-btn:hover {
+  opacity: 0.8;
 }
 
 .loading-spinner {
@@ -374,5 +449,15 @@ button {
 
   .profile-details {
     width: 100%;
+  }
+  
+  .activity-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .activity-icon {
+    align-self: center;
   }
 }
