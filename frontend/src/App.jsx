@@ -15,6 +15,10 @@ import ReceiverThanks from "./pages/forms/receiver/ReceiverThanks";
 import RequestStatus from "./pages/forms/receiver/RequestStatus";
 import DonorStatusPage from './pages/forms/donor/DonorStatus';
 import DonorThanks from "./pages/forms/donor/DonorThanks";
+import { lazy } from 'react';
+import ProfilePage from './pages/profile/Profile';
+const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard')); // Lazy load AdminDashboard
+
 
 
 
@@ -48,7 +52,11 @@ const App = () => {
         <Route path="/receiver-form" element={<ReceiverForm />} />
         <Route path="/receiver-thanks" element={<ReceiverThanks />} />
         <Route path="/request-status" element={<RequestStatus />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        {/* AdminDashboard is already imported above */}
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+
+        {/* Add other routes as needed */}
         
         
       </Routes>

@@ -2,21 +2,39 @@ import React, { useState, useEffect } from "react";
 import "./DonorStatus.css";
 
 const DonorStatusPage = () => {
-  const [donorStatus, setDonorStatus] = useState("pending"); // Change to "approved" for testing
+  const [donorStatus, setDonorStatus] = useState("pending");
   const [bloodRequests, setBloodRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+
+  useEffect(() => {
+    // Fetch donor status from backend
+    fetch("http://localhost:5000/api/donor/status")
+      .then((res) => res.json())
+      .then((data) => setDonorStatus(data.status));
+  }, []);
 
   useEffect(() => {
     if (donorStatus === "approved") {
-      setBloodRequests([
-        { id: 1, name: "John Doe", bloodType: "O+", distance: "2km", hospital: "City Hospital" },
-        { id: 2, name: "Jane Smith", bloodType: "A-", distance: "3.5km", hospital: "Metro Clinic" }
-      ]);
+      fetch("http://localhost:5000/api/blood-requests")
+        .then((res) => res.json())
+        .then((data) => {
+          setBloodRequests(data);
+          setNotifications(["New blood request received!"]);
+        });
     }
   }, [donorStatus]);
 
-  const handleAcceptRequest = (id) => {
-    alert(`You have accepted the request from ${bloodRequests.find(r => r.id === id).name}`);
-    setBloodRequests(bloodRequests.filter(r => r.id !== id));
+  const handleAcceptRequest = async (id) => {
+    const request = bloodRequests.find((r) => r.id === id);
+    alert(`You have accepted the request from ${request.name}`);
+    setBloodRequests(bloodRequests.filter((r) => r.id !== id));
+
+    // Notify backend to send email & SMS
+    await fetch("http://localhost:5000/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId: id }),
+    });
   };
 
   return (

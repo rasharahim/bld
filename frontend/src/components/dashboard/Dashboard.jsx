@@ -1,31 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom'; // Import useNavigate
 import { motion } from 'framer-motion';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeLink, setActiveLink] = useState('');
+  const [notifications, setNotifications] = useState([]);
   const location = useLocation();
+  const navigate = useNavigate(); // Initialize useNavigate
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    const token = localStorage.getItem("token");
+    if (!token) {
+      console.error("No token found. Redirecting to login...");
+      navigate("/login"); // Redirect user to login page
+      return;
+    }
 
-  useEffect(() => {
     setActiveLink(location.pathname);
-  }, [location]);
+    fetchNotifications(token); // Call function to fetch notifications
+  }, [location, navigate]);
 
-  const navLinks = [
-    { path: '/home', name: 'Home', icon: 'fa-home' },
-    { path: '/donor-form', name: 'Donate', icon: 'fa-tint' },
-    { path: '/receiver-form', name: 'Request Blood', icon: 'fa-hand-holding-medical' },
-    { path: '/profile', name: 'My Profile', icon: 'fa-user' }
-  ];
+  const fetchNotifications = async (token) => {
+    try {
+      const response = await fetch("http://localhost:5000/api/notifications", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setNotifications(data);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
 
   return (
     <motion.div 
@@ -39,31 +55,28 @@ const Dashboard = () => {
           <i className="fas fa-heartbeat"></i>
           <span>BloodConnect</span>
         </div>
-        
         <div className="dashboard-nav">
-          {navLinks.map((link) => (
-            <Link 
-              key={link.path}
-              to={link.path}
-              className={`dashboard-link ${activeLink === link.path ? 'active' : ''}`}
-            >
-              <i className={`fas ${link.icon}`}></i>
-              <span>{link.name}</span>
-              {activeLink === link.path && (
-                <motion.div 
-                  className="nav-indicator"
-                  layoutId="navIndicator"
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                />
-              )}
-            </Link>
-          ))}
+          <Link to="/home" className={`dashboard-link ${activeLink === '/home' ? 'active' : ''}`}>
+            <i className="fas fa-home"></i>
+            <span>Home</span>
+          </Link>
+          <Link to="/donor-form" className={`dashboard-link ${activeLink === '/donor-form' ? 'active' : ''}`}>
+            <i className="fas fa-tint"></i>
+            <span>Donate</span>
+          </Link>
+          <Link to="/receiver-form" className={`dashboard-link ${activeLink === '/receiver-form' ? 'active' : ''}`}>
+            <i className="fas fa-hand-holding-medical"></i>
+            <span>Request Blood</span>
+          </Link>
+          <Link to="/profile" className={`dashboard-link ${activeLink === '/profile' ? 'active' : ''}`}>
+            <i className="fas fa-user"></i>
+            <span>My Profile</span>
+          </Link>
         </div>
-
         <div className="dashboard-actions">
           <button className="notification-btn">
             <i className="fas fa-bell"></i>
-            <span className="notification-badge">3</span>
+            {notifications.length > 0 && <span className="notification-badge">{notifications.length}</span>}
           </button>
           <div className="user-avatar">
             <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="User" />

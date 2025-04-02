@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Register.css';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // Add useNavigate here
+
 
 const Register = () => {
   const [fullName, setFullName] = useState('');
@@ -9,6 +10,8 @@ const Register = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
+  const navigate = useNavigate(); // Initialize navigate
+
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -31,7 +34,10 @@ const Register = () => {
       });
       const data = await response.json();
       if (response.ok) {
-        setMessage('Registration successful!');
+        setMessage('Registration successful!Redirecting to login...');
+        setTimeout(() => {
+          navigate('/login'); // Changed from '/admin-dashboard' to '/login'
+        }, 2000);
       } else {
         setMessage(`Registration failed: ${data.error}`);
       }

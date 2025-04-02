@@ -1,0 +1,94 @@
+/* Dashboard Layout */
+.dashboard {
+    display: flex;
+    height: 100vh;
+    background-color: #f8f9fa;
+    font-family: 'Arial', sans-serif;
+  }
+  
+  /* Sidebar Styling */
+  .sidebar {
+    width: 280px;
+    background: linear-gradient(135deg, #d32f2f, #b71c1c); /* Gradient for a modern look */
+    color: white;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: width 0.3s ease-in-out;
+  }
+  
+  .sidebar h2 {
+    margin-bottom: 30px;
+    font-size: 22px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  
+  .sidebar nav {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .sidebar nav a {
+    color: white;
+    text-decoration: none;
+    padding: 12px 20px;
+    margin: 5px 0;
+    text-align: left;
+    width: 100%;
+    border-radius: 5px;
+    font-size: 16px;
+    transition: background 0.3s ease, padding-left 0.3s ease;
+  }
+  
+  .sidebar nav a:hover {
+    background: rgba(255, 255, 255, 0.2);
+    padding-left: 25px;
+  }
+
+  /* Main Content Styling */
+  .content {
+    flex-grow: 1;
+    padding: 25px;
+    background: white;
+    border-radius: 10px;
+    margin: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+  }
+  
+  h1 {
+    color: #d32f2f;
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 24px;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .dashboard {
+      flex-direction: column;
+    }
+
+    .sidebar {
+      width: 100%;
+      padding: 10px;
+    }
+
+    .sidebar nav {
+      flex-direction: row;
+      justify-content: center;
+    }
+
+    .sidebar nav a {
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    .content {
+      margin: 10px;
+      padding: 15px;
+    }
+  }

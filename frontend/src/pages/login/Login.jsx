@@ -5,28 +5,47 @@ import { Link, useNavigate } from 'react-router-dom';
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [userType, setUserType] = useState('user'); // 'user' or 'admin'
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    
+    console.log("Login attempt with:", { 
+      email, 
+      password, 
+      userType
+    });
+  
     try {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }), // Use email instead of username
+        body: JSON.stringify({ email, password }),
       });
+  
+      console.log("Raw response:", response);
+  
       const data = await response.json();
-      if (response.ok) {
-        setMessage('Login successful!');
-        setTimeout(() => {
-          navigate('/home');
-        }, 1000);
-      } else {
-        setMessage(`Login failed: ${data.error}`);
+      console.log("Response data:", data);
+  
+      if (!response.ok) {
+        setMessage(data.error || 'Login failed');
+        return;
       }
+  
+      localStorage.setItem("token", data.token);
+      console.log("Stored Token:", localStorage.getItem("token")); // ✅ Check if the token is stored
+  
+      setMessage('Login successful!');
+      setTimeout(() => {
+        navigate(data.user.role === 'admin' ? '/admin-dashboard' : '/home');
+      }, 1000);
+  
     } catch (error) {
-      setMessage('Error during login. Please try again.');
+      console.error("Full login error:", error);
+      setMessage(`Error: ${error.message}`);
     }
   };
 
@@ -47,8 +66,16 @@ const Login = () => {
         <div className='right'>
           <h1>Login</h1>
           <form onSubmit={handleLogin}>
+            <select
+              value={userType}
+              onChange={(e) => setUserType(e.target.value)}
+              className="user-type-select"
+            >
+              <option value="user">User Login</option>
+              <option value="admin">Admin Login</option>
+            </select>
             <input
-              type="email" // Change type to "email"
+              type="email"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
