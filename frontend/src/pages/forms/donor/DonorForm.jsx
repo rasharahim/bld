@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import auth from "../../../utils/auth";  // Adjusted based on folder structure
 import "../FormStyles.css";
 import countryData from "/src/data/countryData.json";
 import Gps from "@/components/Gps";
+import axios from 'axios';
+
 
 const DonorForm = () => {
   // Constants
@@ -37,6 +41,7 @@ const DonorForm = () => {
   const [states, setStates] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [locationMethod, setLocationMethod] = useState("address");
+  const navigate = useNavigate(); // Add this line
 
   // Calculate age from DOB
   useEffect(() => {
@@ -158,27 +163,91 @@ const DonorForm = () => {
     return Object.keys(validationErrors).length === 0;
   };
 
+  const geocodeAddress = async (address) => {
+    const apiKey = import.meta.env.VITE_OPENCAGE_API_KEY;
+    if (!apiKey) {
+      console.error("API key is missing. Please check your .env file.");
+      setErrors(prev => ({ ...prev, location: "Unable to geocode address. API key missing." }));
+      return null;
+    }
+
+    const formattedAddress = `${address.street}, ${address.district}, ${address.state}, ${address.country}`;
+    const url = `https://api.opencagedata.com/geocode/v1/json?key=${apiKey}&q=${encodeURIComponent(formattedAddress)}&pretty=1&no_annotations=1`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.results && data.results.length > 0) {
+        const { lat, lng } = data.results[0].geometry;
+        return {
+          lat,
+          lng,
+          address: formattedAddress
+        };
+      }
+      throw new Error('No coordinates found for this address');
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      setErrors(prev => ({ ...prev, location: "Failed to get coordinates for this address." }));
+      return null;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      try {
-        const response = await fetch("http://your-backend-api/donors", {
-          method: "POST",
+    if (!validateForm()) return;
+
+    try {
+      let locationData = donor.location;
+
+      // If using address method, geocode the address
+      if (locationMethod === 'address') {
+        const addressData = {
+          street: donor.street,
+          district: donor.district,
+          state: donor.state,
+          country: donor.country
+        };
+        
+        locationData = await geocodeAddress(addressData);
+        if (!locationData) {
+          setErrors(prev => ({ ...prev, location: "Failed to get coordinates for this address." }));
+          return;
+        }
+      }
+
+      // Prepare donor data with location
+      const donorData = {
+        ...donor,
+        location: locationData
+      };
+
+      const response = await axios.post(
+        `http://localhost:5000/api/donors/createDonor`,  // Use Vite env variable
+        donorData,
+        {
           headers: { 
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({ ...donor, status: "pending" }),
-        });
-  
-        if (response.ok) {
-          alert("Thank you for registering! Your application is pending review.");
-        } else {
-          alert("Submission failed, please try again.");
+            "Authorization": `Bearer ${auth.getToken()}`
+          }
         }
-      } catch (error) {
-        console.error("Error submitting donor form:", error);
+      );
+      
+      if (response.data.success) {
+        alert('Donor registration successful! Please wait for admin approval.');
+        navigate('/dashboard');
       }
+    } catch (error) {
+        alert(
+            error.response?.data?.message || 
+            `Submission failed: ${error.message}`
+        );
+
+        if (error.message.includes("token")) {
+            auth.removeToken();
+            navigate('/login');
+        }
     }
   };
 

@@ -1,51 +1,52 @@
 import React, { useState } from 'react';
 import './Login.scss';
+import auth from '@/utils/auth';
 import { Link, useNavigate } from 'react-router-dom';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [userType, setUserType] = useState('user'); // 'user' or 'admin'
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError('');
+    setLoading(true);
     
-    console.log("Login attempt with:", { 
-      email, 
-      password, 
-      userType
-    });
-  
     try {
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ email, password }),
       });
   
-      console.log("Raw response:", response);
-  
       const data = await response.json();
-      console.log("Response data:", data);
+      console.log('Login response:', data);
   
       if (!response.ok) {
-        setMessage(data.error || 'Login failed');
-        return;
+        throw new Error(data.message || 'Login failed');
       }
   
-      localStorage.setItem("token", data.token);
-      console.log("Stored Token:", localStorage.getItem("token")); // ✅ Check if the token is stored
-  
-      setMessage('Login successful!');
-      setTimeout(() => {
-        navigate(data.user.role === 'admin' ? '/admin-dashboard' : '/home');
-      }, 1000);
-  
+      // Store token
+      auth.setToken(data.token);
+      
+      // Navigate based on user type
+      if (data.user.is_admin) {
+        navigate('/admin-dashboard');
+      } else {
+        navigate('/home');
+      }
+      
     } catch (error) {
-      console.error("Full login error:", error);
-      setMessage(`Error: ${error.message}`);
+      console.error('Login error:', error);
+      setError(error.message || 'Failed to login. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -66,14 +67,6 @@ const Login = () => {
         <div className='right'>
           <h1>Login</h1>
           <form onSubmit={handleLogin}>
-            <select
-              value={userType}
-              onChange={(e) => setUserType(e.target.value)}
-              className="user-type-select"
-            >
-              <option value="user">User Login</option>
-              <option value="admin">Admin Login</option>
-            </select>
             <input
               type="email"
               placeholder="Email"
@@ -88,12 +81,14 @@ const Login = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-            <button type="submit">Login</button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
           </form>
           <Link to="/forgot-password" className="forgot-password">
             Forgot Password?
           </Link>
-          {message && <p>{message}</p>}
+          {error && <p className="error" style={{ color: 'red', marginTop: '10px' }}>{error}</p>}
         </div>
       </div>
     </div>

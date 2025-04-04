@@ -1,200 +1,199 @@
-const db = require('../config/db');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken'); // Add this at the top with other requires
+const jwt = require('jsonwebtoken');
+const db = require('../config/db');
 
+exports.register = async (req, res) => {
+  try {
+    const { full_name, phone_number, email, password } = req.body;
 
-// Register a new user
-const register = (req, res) => {
-  const { fullname, phoneNumber, email, password, confirmPassword, blood_type } = req.body;
-
-  // Validation (unchanged)
-  if (!fullname || !phoneNumber || !email || !password || !confirmPassword) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-
-  if (password !== confirmPassword) {
-    return res.status(400).json({ error: 'Passwords do not match' });
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
-
-  // Check email existence
-  db.query('SELECT id FROM users WHERE email = ?', [email], (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: 'Email check failed' });
+    // Validate input
+    if (!full_name || !phone_number || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'All fields are required'
+      });
     }
 
-    if (results.length > 0) {
-      return res.status(400).json({ error: 'Email already exists' });
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
+      });
+    }
+
+    // Validate phone number format (10 digits)
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phone_number)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number must be 10 digits'
+      });
+    }
+
+    // Check if email already exists
+    const [existingUsers] = await db.execute(
+      'SELECT * FROM users WHERE email = ?',
+      [email]
+    );
+
+    if (existingUsers.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already registered'
+      });
+    }
+
+    // Check if phone number already exists
+    const [existingPhone] = await db.execute(
+      'SELECT * FROM users WHERE phone_number = ?',
+      [phone_number]
+    );
+
+    if (existingPhone.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number already registered'
+      });
     }
 
     // Hash password
-    bcrypt.hash(password, 10, (err, hash) => {
-      if (err) {
-        return res.status(500).json({ error: 'Password hashing failed' });
-      }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-      // Start transaction for multiple inserts
-      db.beginTransaction(err => {
-        if (err) {
-          return res.status(500).json({ error: 'Transaction failed' });
-        }
+    // Insert new user
+    const [result] = await db.execute(
+      'INSERT INTO users (full_name, phone_number, email, password, is_admin) VALUES (?, ?, ?, ?, ?)',
+      [full_name, phone_number, email, hashedPassword, false]
+    );
 
-        // 1. Insert into users
-        db.query(
-          'INSERT INTO users (fullname, phoneNumber, email, password) VALUES (?, ?, ?, ?)',
-          [fullname, phoneNumber, email, hash],
-          (err, result) => {
-            if (err) {
-              return db.rollback(() => {
-                res.status(500).json({ error: 'User creation failed' });
-              });
-            }
+    // Get the created user with timestamps
+    const [newUser] = await db.execute(
+      'SELECT id, full_name, email, phone_number, is_admin, created_at, updated_at FROM users WHERE id = ?',
+      [result.insertId]
+    );
 
-            const userId = result.insertId;
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: result.insertId, 
+        email, 
+        is_admin: false 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
 
-            // 2. Insert into user_details (if blood_type provided)
-            if (blood_type) {
-              db.query(
-                'INSERT INTO user_details (user_id, blood_type) VALUES (?, ?)',
-                [userId, blood_type],
-                (err) => {
-                  if (err) {
-                    return db.rollback(() => {
-                      res.status(500).json({ error: 'Profile setup failed' });
-                    });
-                  }
-                }
-              );
-            }
-
-            // 3. Initialize donor_availability
-            db.query(
-              'INSERT INTO donor_availability (user_id) VALUES (?)',
-              [userId],
-              (err) => {
-                if (err) {
-                  return db.rollback(() => {
-                    res.status(500).json({ error: 'Donor setup failed' });
-                  });
-                }
-
-                // Commit transaction
-                db.commit(err => {
-                  if (err) {
-                    return db.rollback(() => {
-                      res.status(500).json({ error: 'Commit failed' });
-                    });
-                  }
-
-                  res.status(201).json({ message: 'User registered successfully' });
-                });
-              }
-            );
-          }
-        );
-      });
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      token,
+      user: newUser[0]
     });
-  });
+
+    } catch (error) {
+      console.error('Registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed',
+      error: error.message
+    });
+  }
 };
 
-// Login a user
-const login = (req, res) => {
-  const { email, password } = req.body;
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  // Query updated for new schema
-  const query = `
-    SELECT u.id, u.fullname, u.email, u.password, u.role, ud.blood_type 
-    FROM users u
-    LEFT JOIN user_details ud ON u.id = ud.user_id
-    WHERE u.email = ?
-  `;
-
-  db.query(query, [email], (err, results) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
     }
 
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+    // Get user by email
+    const [users] = await db.execute(
+      'SELECT * FROM users WHERE email = ?',
+      [email]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
     }
 
-    const user = results[0];
+    const user = users[0];
 
-    bcrypt.compare(password, user.password, (err, isMatch) => {
-      if (err) {
-        return res.status(500).json({ error: 'Password comparison failed' });
-      }
-
-      if (!isMatch) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+    // Check password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
       }
 
       // Generate JWT token
       const token = jwt.sign(
-        {
-          userId: user.id,
-          role: user.role,
-          bloodType: user.blood_type
-        },
-        process.env.JWT_SECRET || 'your_fallback_secret', // Always have a fallback
-        { expiresIn: '1h' }
-      );
+      { 
+        id: user.id, 
+        email: user.email, 
+        is_admin: user.is_admin 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
 
-      res.status(200).json({
-        message: 'Login successful',
+    // Remove password from user object
+    delete user.password;
+
+      res.json({ 
+      success: true,
+      message: 'Login successful',
         token,
-        user: {
-          id: user.id,
-          fullName: user.fullname, // Note: Now using full_name
-          email: user.email,
-          role: user.role,
-          bloodType: user.blood_type // New field
-        }
+      user
       });
+
+    } catch (error) {
+      console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Login failed',
+      error: error.message
     });
-  });
-};
-
-// Forgot password (placeholder)
-const forgotPassword = (req, res) => {
-  const { email } = req.body;
-
-  // Don't allow password reset for admin
-  if (email === ADMIN_CREDENTIALS.email) {
-    return res.status(403).json({ error: 'Admin password cannot be reset this way' });
   }
-
-  // Simulate sending a password reset email
-  console.log(`Password reset email sent to: ${email}`);
-
-  res.status(200).json({ message: 'Password reset instructions sent to your email.' });
 };
 
-// Add to authController.js
-const testAdminLogin = async (req, res) => {
-  const { email, password } = req.body;
-  
+exports.getProfile = async (req, res) => {
   try {
-    // Manual test with hardcoded values
-    const testEmail = 'admin@example.com';
-    const testPassword = 'admin123';
-    const testHash = '$2b$16$yourhashedpassword'; // Copy from your DB
-    
-    if (email !== testEmail) {
-      return res.status(404).json({ error: 'Admin user not found' });
+    const [users] = await db.execute(
+      'SELECT id, full_name, email, phone_number, is_admin, created_at, updated_at FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
-    
-    const match = await bcrypt.compare(password, testHash);
+
     res.json({
-      success: match,
-      message: match ? 'Manual test successful' : 'Manual test failed'
+      success: true,
+      user: users[0]
     });
+
   } catch (error) {
-    res.status(500).json({ error: 'Test failed', details: error.message });
+    console.error('Get profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get profile',
+      error: error.message
+    });
   }
 };
-
-module.exports = { register, login, forgotPassword, testAdminLogin  };

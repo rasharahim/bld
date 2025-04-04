@@ -1,94 +1,516 @@
 /* Dashboard Layout */
-.dashboard {
-    display: flex;
-    height: 100vh;
-    background-color: #f8f9fa;
-    font-family: 'Arial', sans-serif;
-  }
-  
-  /* Sidebar Styling */
-  .sidebar {
-    width: 280px;
-    background: linear-gradient(135deg, #d32f2f, #b71c1c); /* Gradient for a modern look */
-    color: white;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    transition: width 0.3s ease-in-out;
-  }
-  
-  .sidebar h2 {
-    margin-bottom: 30px;
-    font-size: 22px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  
-  .sidebar nav {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .sidebar nav a {
-    color: white;
-    text-decoration: none;
-    padding: 12px 20px;
-    margin: 5px 0;
-    text-align: left;
-    width: 100%;
-    border-radius: 5px;
-    font-size: 16px;
-    transition: background 0.3s ease, padding-left 0.3s ease;
-  }
-  
-  .sidebar nav a:hover {
-    background: rgba(255, 255, 255, 0.2);
-    padding-left: 25px;
-  }
+.admin-dashboard {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #f8f9fa;
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
+}
 
-  /* Main Content Styling */
-  .content {
-    flex-grow: 1;
-    padding: 25px;
-    background: white;
-    border-radius: 10px;
-    margin: 20px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-    overflow-y: auto;
-  }
-  
-  h1 {
-    color: #d32f2f;
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 24px;
-  }
+.dashboard-header {
+  margin-bottom: 2rem;
+  text-align: center;
+  position: relative;
+  z-index: 2;
+}
 
-  /* Responsive Design */
-  @media (max-width: 768px) {
-    .dashboard {
-      flex-direction: column;
-    }
+.dashboard-header h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
 
-    .sidebar {
-      width: 100%;
-      padding: 10px;
-    }
+.tab-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  position: relative;
+  z-index: 2;
+}
 
-    .sidebar nav {
-      flex-direction: row;
-      justify-content: center;
-    }
+.tab-buttons button {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
 
-    .sidebar nav a {
-      padding: 10px;
-      font-size: 14px;
-    }
+.tab-buttons button.active {
+  background: #007bff;
+  color: white;
+}
 
-    .content {
-      margin: 10px;
-      padding: 15px;
-    }
-  }
+.dashboard-content {
+  position: relative;
+  z-index: 1;
+  background-color: #f8f9fa;
+  min-height: calc(100vh - 200px);
+  padding: 1rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-size: 1.2rem;
+  position: relative;
+  z-index: 2;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem;
+  position: relative;
+  z-index: 2;
+}
+
+.details-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  transition: transform 0.2s;
+  z-index: 2;
+}
+
+.details-card:hover {
+  transform: translateY(-2px);
+}
+
+.details-card h3 {
+  color: #333;
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+}
+
+.status-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  z-index: 3;
+}
+
+.status-badge[data-status="pending"] {
+  background: #ffd700;
+  color: #856404;
+}
+
+.status-badge[data-status="approved"] {
+  background: #28a745;
+  color: white;
+}
+
+.status-badge[data-status="rejected"] {
+  background: #dc3545;
+  color: white;
+}
+
+.details-content {
+  margin-top: 1rem;
+  position: relative;
+  z-index: 2;
+}
+
+.details-content p {
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+.details-content strong {
+  color: #333;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  position: relative;
+  z-index: 3;
+}
+
+.action-buttons button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.approve-btn {
+  background: #28a745;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #218838;
+}
+
+.reject-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.reject-btn:hover {
+  background: #c82333;
+}
+
+.view-btn {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  z-index: 3;
+}
+
+.view-btn:hover {
+  background: #0056b3;
+}
+
+.error-message {
+  background-color: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #dc2626;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+  position: relative;
+  z-index: 3;
+}
+
+.error-message button {
+  background-color: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.2s;
+}
+
+.error-message button:hover {
+  background-color: #b91c1c;
+}
+
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 1.125rem;
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 2px dashed #e5e7eb;
+  grid-column: 1 / -1;
+  position: relative;
+  z-index: 2;
+}
+
+.admin-dashboard {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.dashboard-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.dashboard-header h2 {
+  color: #333;
+  margin-bottom: 1.5rem;
+}
+
+.tab-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.tab-buttons button {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.tab-buttons button.active {
+  background: #007bff;
+  color: white;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem;
+}
+
+.details-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  transition: transform 0.2s;
+}
+
+.details-card:hover {
+  transform: translateY(-2px);
+}
+
+.details-card h3 {
+  color: #333;
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+}
+
+.status-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: #ffd700;
+  color: #856404;
+}
+
+.status-badge.approved {
+  background: #28a745;
+  color: white;
+}
+
+.status-badge.rejected {
+  background: #dc3545;
+  color: white;
+}
+
+.details-content {
+  margin-top: 1rem;
+}
+
+.details-content p {
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+.details-content strong {
+  color: #333;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.action-buttons button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.approve-btn {
+  background: #28a745;
+  color: white;
+}
+
+.approve-btn:hover {
+  background: #218838;
+}
+
+.reject-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.reject-btn:hover {
+  background: #c82333;
+}
+
+.view-btn {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: background-color 0.2s;
+}
+
+.view-btn:hover {
+  background: #0056b3;
+}
+
+.donor-match {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}
+
+.donor-match h4 {
+  color: #333;
+  margin: 0 0 1rem 0;
+}
+
+.donor-match p {
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+.error-message {
+  background-color: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #dc2626;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.error-message button {
+  background-color: #dc2626;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.2s;
+}
+
+.error-message button:hover {
+  background-color: #b91c1c;
+}
+
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 1.125rem;
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 2px dashed #e5e7eb;
+  grid-column: 1 / -1;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.donor-matches {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 0.5rem;
+  border: 1px solid #e9ecef;
+}
+
+.donor-matches h4 {
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+}
+
+.donor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.donor-item {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e9ecef;
+  transition: transform 0.2s;
+}
+
+.donor-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.donor-item p {
+  margin: 0.25rem 0;
+  color: #666;
+}
+
+.donor-item strong {
+  color: #333;
+}
+
+.donor-item .distance {
+  color: #0d6efd;
+  font-weight: 500;
+}

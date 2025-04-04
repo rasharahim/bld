@@ -8,7 +8,7 @@ const INDIA_BOUNDS = [
   [97.4, 35.7]  // Northeast
 ];
 
-const MapComponent = () => {
+const MapComponent = ({ onLocationSelect }) => {
   const mapRef = useRef(null);
   const [viewport, setViewport] = useState({
     longitude: 78.9629,
@@ -40,20 +40,26 @@ const MapComponent = () => {
       
       if (data.features.length > 0) {
         const place = data.features[0];
-        setMarker({
+        const location = {
           lng: lngLat.lng,
           lat: lngLat.lat,
           name: place.text || 'Selected Location',
           address: place.place_name
-        });
+        };
+        setMarker(location);
         setViewport(v => ({ ...v, longitude: lngLat.lng, latitude: lngLat.lat, zoom: 12 }));
+        
+        // Pass the location back to parent component
+        if (onLocationSelect) {
+          onLocationSelect(location);
+        }
       }
     } catch (err) {
       setError('Failed to get location details');
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey]);
+  }, [apiKey, onLocationSelect]);
 
   // 2. Modified search function to work with clicks
   const handleSearch = useCallback(async () => {
@@ -79,17 +85,24 @@ const MapComponent = () => {
       const firstResult = data.features[0];
       const [lng, lat] = firstResult.center;
       
+      const location = {
+        lng,
+        lat,
+        name: firstResult.text || searchInput,
+        address: firstResult.place_name
+      };
+      
       setViewport({
         longitude: lng,
         latitude: lat,
         zoom: 12
       });
-      setMarker({ 
-        lng, 
-        lat,
-        name: firstResult.text || searchInput,
-        address: firstResult.place_name 
-      });
+      setMarker(location);
+      
+      // Pass the location back to parent component
+      if (onLocationSelect) {
+        onLocationSelect(location);
+      }
       
     } catch (err) {
       setError(err.message);
@@ -97,12 +110,12 @@ const MapComponent = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [searchInput, apiKey]);
+  }, [searchInput, apiKey, onLocationSelect]);
 
   // ... (keep your existing 3D terrain useEffect) ...
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
+    <div style={{ position: 'relative', width: '100%', height: '400px' }}>
       <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 1 }}>
         <input
           type="text"
@@ -169,26 +182,24 @@ const MapComponent = () => {
         </div>
       )}
 
-<Map
-  ref={mapRef}
-  mapLib={maplibregl}  // Add this line
-  {...viewport}
-  onMove={(evt) => setViewport(evt.viewState)}
-  onClick={handleMapClick}
-  mapStyle={mapStyle}
-  style={{ width: '100%', height: '100%' }}
-  maxBounds={INDIA_BOUNDS}
-  minZoom={3.5}
-  >
-        {/* ... (keep your existing layers) ... */}
-
+      <Map
+        ref={mapRef}
+        mapLib={maplibregl}
+        {...viewport}
+        onMove={(evt) => setViewport(evt.viewState)}
+        onClick={handleMapClick}
+        mapStyle={mapStyle}
+        style={{ width: '100%', height: '100%' }}
+        maxBounds={INDIA_BOUNDS}
+        minZoom={3.5}
+      >
         {marker && (
           <Marker 
             longitude={marker.lng} 
             latitude={marker.lat} 
             color="#ff5252"
             draggable
-            onDragEnd={handleMapClick} // Allow dragging marker
+            onDragEnd={handleMapClick}
           >
             <Popup
               closeButton={true}

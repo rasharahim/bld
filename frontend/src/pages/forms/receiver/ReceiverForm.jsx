@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import "../FormStyles.css";
-import MapComponent from '../../../components/MapComponent';
 import Gps from "@/components/Gps";
-import countryData from "/src/data/countryData.json";
 
 const ReceiverForm = () => {
+  const navigate = useNavigate();
   const [receiver, setReceiver] = useState({
     fullName: "",
     age: "",
@@ -16,12 +17,11 @@ const ReceiverForm = () => {
     contactNumber: "",
     reasonForRequest: "",
     prescription: null,
-    location: { lat: null, lng: null, address: "" },
+    locationMethod: "address", // Default to address
+    latitude: null,
+    longitude: null
   });
 
-  const [states, setStates] = useState([]);
-  const [districts, setDistricts] = useState([]);
-  const [locationMethod, setLocationMethod] = useState("address");
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
@@ -32,85 +32,228 @@ const ReceiverForm = () => {
     }
   };
 
-  const handleLocationChange = (newLocation) => {
+  const handleLocationUpdate = (location) => {
     setReceiver(prev => ({ 
       ...prev, 
-      location: {
-        lat: newLocation.lat,
-        lng: newLocation.lng,
-        address: newLocation.address || ""
-      }
+      latitude: location.latitude,
+      longitude: location.longitude,
+      address: location.address || prev.address,
+      // Set address fields from GPS location
+      country: location.country || prev.country,
+      state: location.state || prev.state,
+      district: location.district || prev.district
     }));
-    setErrors(prev => ({ ...prev, location: undefined }));
   };
 
   const validateForm = () => {
     let validationErrors = {};
+    console.log('Validating form with data:', receiver);
 
-    if (!receiver.fullName.trim()) validationErrors.fullName = "Full Name is required.";
-    if (!receiver.age || isNaN(receiver.age) || receiver.age < 1) 
-      validationErrors.age = "Please enter a valid age.";
-    if (!receiver.bloodType) validationErrors.bloodType = "Please select a blood type.";
-    if (!receiver.contactNumber) validationErrors.contactNumber = "Contact number is required.";
-    if (!receiver.reasonForRequest) validationErrors.reasonForRequest = "Please provide reason for request.";
-    if (!receiver.prescription) validationErrors.prescription = "Doctor's prescription is required.";
-
-    if (locationMethod === "address") {
-      if (!receiver.country) validationErrors.country = "Country is required.";
-      if (!receiver.state) validationErrors.state = "State is required.";
-      if (!receiver.district) validationErrors.district = "District is required.";
-      if (!receiver.address) validationErrors.address = "Address is required.";
-    } else {
-      if (!receiver.location.lat || !receiver.location.lng) {
-        validationErrors.location = "Please select your location on the map";
-      }
+    // Basic information validation
+    if (!receiver.fullName.trim()) {
+      validationErrors.fullName = "Full Name is required.";
+      console.log('Full name validation failed');
     }
 
+    if (!receiver.age || isNaN(receiver.age) || receiver.age < 1) {
+      validationErrors.age = "Please enter a valid age.";
+      console.log('Age validation failed');
+    }
+
+    if (!receiver.bloodType) {
+      validationErrors.bloodType = "Please select a blood type.";
+      console.log('Blood type validation failed');
+    }
+
+    if (!receiver.contactNumber) {
+      validationErrors.contactNumber = "Contact number is required.";
+      console.log('Contact number validation failed');
+    }
+
+    if (!receiver.reasonForRequest) {
+      validationErrors.reasonForRequest = "Please provide reason for request.";
+      console.log('Reason validation failed');
+    }
+
+    // Location validation - required fields for both methods
+    if (!receiver.country) {
+      validationErrors.country = "Country is required.";
+      console.log('Country validation failed');
+    }
+    if (!receiver.state) {
+      validationErrors.state = "State is required.";
+      console.log('State validation failed');
+    }
+    if (!receiver.district) {
+      validationErrors.district = "District is required.";
+      console.log('District validation failed');
+    }
+    if (!receiver.address) {
+      validationErrors.address = "Address is required.";
+      console.log('Address validation failed');
+    }
+
+    // Additional GPS validation if using GPS method
+    if (receiver.locationMethod === "gps" && (!receiver.latitude || !receiver.longitude)) {
+      validationErrors.location = "Please get your current location.";
+      console.log('GPS location validation failed');
+    }
+
+    console.log('Validation errors:', validationErrors);
     setErrors(validationErrors);
+
+    // Show alert if there are validation errors
+    if (Object.keys(validationErrors).length > 0) {
+      const errorMessage = Object.values(validationErrors).join('\n');
+      alert('Please fix the following errors:\n\n' + errorMessage);
+    }
+
     return Object.keys(validationErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      console.log("Receiver Details:", receiver);
-      alert("Receiver request submitted successfully!");
+    console.log('Form submitted'); // Debug log
+    
+    if (!validateForm()) {
+      console.log('Form validation failed'); // Debug log
+      return;
+    }
+  
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Token:', token ? 'Present' : 'Missing'); // Debug log
+      
+      if (!token) {
+        alert('Please login to submit a blood request.');
+        navigate('/login');
+        return;
+      }
+
+      const formData = new FormData();
+      
+      // Add all the fields to FormData
+      formData.append('fullName', receiver.fullName || '');
+      formData.append('age', receiver.age || '');
+      formData.append('bloodType', receiver.bloodType || '');
+      formData.append('contactNumber', receiver.contactNumber || '');
+      formData.append('country', receiver.country || '');
+      formData.append('state', receiver.state || '');
+      formData.append('district', receiver.district || '');
+      formData.append('address', receiver.address || '');
+      formData.append('lat', receiver.latitude || '');
+      formData.append('lng', receiver.longitude || '');
+      formData.append('locationAddress', receiver.address || '');
+      formData.append('reasonForRequest', receiver.reasonForRequest || '');
+      
+      // Add prescription file if it exists
+      if (receiver.prescription) {
+        formData.append('prescription', receiver.prescription);
+      } else {
+        // Add an empty file to satisfy the multer requirement
+        const emptyFile = new File([], 'empty.txt', { type: 'text/plain' });
+        formData.append('prescription', emptyFile);
+      }
+
+      console.log('Sending request with data:', Object.fromEntries(formData)); // Debug log
+
+      const response = await axios.post('http://localhost:5000/api/receivers/create', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log('Response received:', response.data); // Debug log
+
+      if (response.data.success) {
+        navigate('/receiver/thanks'); // Redirect to thanks page
+      } else {
+        throw new Error(response.data.message || 'Submission failed');
+      }
+      
+      // Reset form
+      setReceiver({
+        fullName: "",
+        age: "",
+        bloodType: "",
+        country: "",
+        state: "",
+        district: "",
+        address: "",
+        contactNumber: "",
+        reasonForRequest: "",
+        prescription: null,
+        locationMethod: "address",
+        latitude: null,
+        longitude: null
+      });
+  
+    } catch (error) {
+      console.error('Submission error details:', {
+        error: error,
+        response: error.response,
+        data: error.response?.data,
+        status: error.response?.status,
+        message: error.message
+      });
+      
+      let errorMessage = 'Failed to submit blood request. ';
+      if (error.response) {
+        console.log('Error response:', error.response);
+        console.log('Error details:', error.response.data);
+        if (error.response.status === 401) {
+          errorMessage += 'Please login again.';
+          navigate('/login');
+        } else {
+          errorMessage += error.response.data?.message || error.response.data?.error || error.message;
+        }
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+        errorMessage += 'No response received from server. Please check your connection.';
+      } else {
+        console.error('Error setting up request:', error.message);
+        errorMessage += 'Error setting up request: ' + error.message;
+      }
+      
+      alert(errorMessage);
     }
   };
-
-  useEffect(() => {
-    if (receiver.country) {
-      const selectedCountry = countryData.find((c) => c.name === receiver.country);
-      setStates(selectedCountry ? selectedCountry.states : []);
-      setReceiver(prev => ({ ...prev, state: "", district: "" }));
-    }
-  }, [receiver.country]);
-
-  useEffect(() => {
-    if (receiver.state) {
-      const selectedState = states.find((s) => s.name === receiver.state);
-      setDistricts(selectedState ? selectedState.districts : []);
-      setReceiver(prev => ({ ...prev, district: "" }));
-    }
-  }, [receiver.state]);
 
   return (
     <div className="form-container">
       <h2>Blood Receiver Form</h2>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} noValidate>
         <div className="form-section">
           <h3>Personal Information</h3>
           
           <label>Full Name:</label>
-          <input type="text" name="fullName" value={receiver.fullName} onChange={handleChange} required />
+          <input 
+            type="text" 
+            name="fullName" 
+            value={receiver.fullName} 
+            onChange={handleChange} 
+            required 
+          />
           {errors.fullName && <p className="error">{errors.fullName}</p>}
 
           <label>Age:</label>
-          <input type="number" name="age" value={receiver.age} onChange={handleChange} required />
+          <input 
+            type="number" 
+            name="age" 
+            value={receiver.age} 
+            onChange={handleChange} 
+            required 
+          />
           {errors.age && <p className="error">{errors.age}</p>}
 
           <label>Blood Type:</label>
-          <select name="bloodType" value={receiver.bloodType} onChange={handleChange} required>
+          <select 
+            name="bloodType" 
+            value={receiver.bloodType} 
+            onChange={handleChange} 
+            required
+          >
             <option value="">Select</option>
             {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((type) => (
               <option key={type} value={type}>{type}</option>
@@ -123,30 +266,65 @@ const ReceiverForm = () => {
           <h3>Location Details</h3>
           
           <div className="location-method">
-            <label>Location Method:</label>
-            <div>
+            <label>
               <input
                 type="radio"
-                id="addressMethod"
                 name="locationMethod"
-                checked={locationMethod === 'address'}
-                onChange={() => setLocationMethod('address')}
+                value="address"
+                checked={receiver.locationMethod === "address"}
+                onChange={handleChange}
               />
-              <label htmlFor="addressMethod">Address</label>
-              
+              Address
+            </label>
+            <label>
               <input
                 type="radio"
-                id="gpsMethod"
                 name="locationMethod"
-                checked={locationMethod === 'gps'}
-                onChange={() => setLocationMethod('gps')}
+                value="gps"
+                checked={receiver.locationMethod === "gps"}
+                onChange={handleChange}
               />
-              <label htmlFor="gpsMethod">GPS Location</label>
-            </div>
+              Current Location
+            </label>
           </div>
 
-          {locationMethod === 'address' ? (
+          {receiver.locationMethod === "gps" ? (
+            <div className="gps-container">
+              <Gps onLocationUpdate={handleLocationUpdate} />
+              {errors.location && <p className="error">{errors.location}</p>}
+            </div>
+          ) : (
             <>
+              <label>Country:</label>
+              <input 
+                type="text" 
+                name="country" 
+                value={receiver.country} 
+                onChange={handleChange} 
+                required 
+              />
+              {errors.country && <p className="error">{errors.country}</p>}
+
+              <label>State:</label>
+              <input 
+                type="text" 
+                name="state" 
+                value={receiver.state} 
+                onChange={handleChange} 
+                required 
+              />
+              {errors.state && <p className="error">{errors.state}</p>}
+
+              <label>District:</label>
+              <input 
+                type="text" 
+                name="district" 
+                value={receiver.district} 
+                onChange={handleChange} 
+                required 
+              />
+              {errors.district && <p className="error">{errors.district}</p>}
+
               <label>Address:</label>
               <textarea 
                 name="address" 
@@ -157,53 +335,7 @@ const ReceiverForm = () => {
                 placeholder="Enter your full address"
               />
               {errors.address && <p className="error">{errors.address}</p>}
-
-              <label>Country:</label>
-              <select name="country" value={receiver.country} onChange={handleChange} required>
-                <option value="">Select</option>
-                {countryData.map((country, index) => (
-                  <option key={index} value={country.name}>{country.name}</option>
-                ))}
-              </select>
-              {errors.country && <p className="error">{errors.country}</p>}
-
-              <label>State:</label>
-              <select name="state" value={receiver.state} onChange={handleChange} required disabled={!receiver.country}>
-                <option value="">Select</option>
-                {states.map((state, index) => (
-                  <option key={index} value={state.name}>{state.name}</option>
-                ))}
-              </select>
-              {errors.state && <p className="error">{errors.state}</p>}
-
-              <label>District:</label>
-              <select name="district" value={receiver.district} onChange={handleChange} required disabled={!receiver.state}>
-                <option value="">Select</option>
-                {districts.map((district, index) => (
-                  <option key={index} value={district}>{district}</option>
-                ))}
-              </select>
-              {errors.district && <p className="error">{errors.district}</p>}
             </>
-          ) : (
-            <div className="gps-section">
-              <label>Current Location:</label>
-              <Gps location={receiver.location} setLocation={handleLocationChange} />
-              
-              {receiver.location.lat && receiver.location.lng ? (
-                <>
-                  <div className="location-details">
-                    <p>Coordinates: {receiver.location.lat.toFixed(6)}, {receiver.location.lng.toFixed(6)}</p>
-                    {receiver.location.address && (
-                      <p>Address: {receiver.location.address}</p>
-                    )}
-                  </div>
-                  {errors.location && <p className="error">{errors.location}</p>}
-                </>
-              ) : (
-                <p className="instruction">Please select your location on the map</p>
-              )}
-            </div>
           )}
         </div>
 
@@ -211,7 +343,13 @@ const ReceiverForm = () => {
           <h3>Request Details</h3>
           
           <label>Contact Number:</label>
-          <input type="text" name="contactNumber" value={receiver.contactNumber} onChange={handleChange} required />
+          <input 
+            type="text" 
+            name="contactNumber" 
+            value={receiver.contactNumber} 
+            onChange={handleChange} 
+            required 
+          />
           {errors.contactNumber && <p className="error">{errors.contactNumber}</p>}
 
           <label>Reason for Blood Request:</label>
@@ -230,12 +368,20 @@ const ReceiverForm = () => {
             name="prescription" 
             accept=".pdf, .jpg, .jpeg, .png" 
             onChange={handleChange} 
-            required 
           />
-          {errors.prescription && <p className="error">{errors.prescription}</p>}
         </div>
 
-        <button type="submit" className="submit-btn">Submit Request</button>
+        <button 
+          type="submit" 
+          className="submit-btn"
+          onClick={(e) => {
+            e.preventDefault();
+            console.log('Button clicked');
+            handleSubmit(e);
+          }}
+        >
+          Submit Request
+        </button>
       </form>
     </div>
   );

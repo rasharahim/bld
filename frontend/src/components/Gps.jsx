@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const Gps = () => {
+const Gps = ({ onLocationUpdate }) => {
     const [latitude, setLatitude] = useState(null);
     const [longitude, setLongitude] = useState(null);
     const [userAddress, setUserAddress] = useState("");
@@ -11,8 +11,18 @@ const Gps = () => {
         if (geo) {
             geo.getCurrentPosition(
                 (position) => {
-                    setLatitude(position.coords.latitude);
-                    setLongitude(position.coords.longitude);
+                    const { latitude, longitude } = position.coords;
+                    setLatitude(latitude);
+                    setLongitude(longitude);
+                    
+                    // Pass location to parent component
+                    if (onLocationUpdate) {
+                        onLocationUpdate({
+                            latitude,
+                            longitude,
+                            address: userAddress
+                        });
+                    }
                 },
                 (err) => {
                     setError("Unable to retrieve location. Please allow location access.");
@@ -22,7 +32,7 @@ const Gps = () => {
         } else {
             setError("Geolocation is not supported by this browser.");
         }
-    }, []); // Runs only once on component mount
+    }, [onLocationUpdate]); // Add onLocationUpdate to dependencies
 
     const getUserAddress = async () => {
         if (!latitude || !longitude) {
@@ -30,7 +40,7 @@ const Gps = () => {
             return;
         }
 
-        const apiKey = import.meta.env.VITE_OPENCAGE_API_KEY; // Use Vite's environment variable
+        const apiKey = import.meta.env.VITE_OPENCAGE_API_KEY;
         if (!apiKey) {
             console.error("API key is missing. Please check your .env file.");
             setError("API key is missing.");
@@ -42,9 +52,29 @@ const Gps = () => {
         try {
             const response = await fetch(url);
             const data = await response.json();
-            console.log("API Response:", data); // Debugging log
+            console.log("API Response:", data);
             if (data.results && data.results.length > 0) {
-                setUserAddress(data.results[0].formatted);
+                const result = data.results[0];
+                const components = result.components;
+                const address = result.formatted;
+                setUserAddress(address);
+                
+                // Extract address components
+                const locationData = {
+                    latitude,
+                    longitude,
+                    address,
+                    country: components.country || "",
+                    state: components.state || components.region || "",
+                    district: components.state_district || components.county || components.city || "",
+                };
+                
+                console.log("Extracted location data:", locationData);
+                
+                // Pass updated location with address components to parent component
+                if (onLocationUpdate) {
+                    onLocationUpdate(locationData);
+                }
             } else {
                 console.error("No address found for the given coordinates.");
                 setError("No address found for the given coordinates.");
@@ -56,25 +86,29 @@ const Gps = () => {
     };
 
     return (
-        <>
-            <h1>Current Location</h1>
+        <div className="gps-component">
             {error ? (
                 <p style={{ color: "red" }}>{error}</p>
             ) : (
                 <>
-                    <h2>Latitude: {latitude || "Loading..."}</h2>
-                    <h2>Longitude: {longitude || "Loading..."}</h2>
-                    <h2>User Address: {userAddress || "Not fetched yet"}</h2>
-                    <button
-                        type="button"
-                        onClick={getUserAddress}
-                        disabled={!latitude || !longitude}
-                    >
-                        Get User Address
-                    </button>
+                    <div className="coordinates">
+                        <p>Latitude: {latitude || "Loading..."}</p>
+                        <p>Longitude: {longitude || "Loading..."}</p>
+                    </div>
+                    <div className="address">
+                        <p>Address: {userAddress || "Not fetched yet"}</p>
+                        <button
+                            type="button"
+                            onClick={getUserAddress}
+                            disabled={!latitude || !longitude}
+                            className="get-address-btn"
+                        >
+                            Get Address
+                        </button>
+                    </div>
                 </>
             )}
-        </>
+        </div>
     );
 };
 

@@ -1,18 +1,33 @@
 const mysql = require('mysql2');
+require('dotenv').config();
 
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root', // Replace with your MySQL username
-  password: 'Chill@12', // Replace with your MySQL password
-  database: 'auth_system',
-});
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'blood_donation_db',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+}).promise(); // Create a promise-based pool
 
-db.connect((err) => {
-  if (err) {
-    console.error('Error connecting to MySQL:', err);
-  } else {
-    console.log('Connected to MySQL database');
+// Test the connection
+pool.getConnection()
+  .then(connection => {
+    console.log('Connected to database as ID', connection.threadId);
+    connection.release();
+  })
+  .catch(err => {
+    console.error('Database connection failed:', err.stack);
+    process.exit(1);
+  });
+
+// Handle disconnects
+pool.on('error', err => {
+  console.error('Database error:', err);
+  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+    console.log('Database connection was lost. Attempting to reconnect...');
   }
 });
 
-module.exports = db;
+module.exports = pool;

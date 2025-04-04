@@ -1,8 +1,11 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom'; // Import useLocation
 import '../ThanksStyles.css';
 
 const DonorThankYou = () => {
+  const location = useLocation(); // Now useLocation is correctly imported
+  const { donorId, message } = location.state || {};
+
   return (
     <div className="thank-you-container">
       <div className="thank-you-card">
@@ -13,7 +16,7 @@ const DonorThankYou = () => {
             <path className="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
           </svg>
         </div>
-        
+
         <div className="info-section">
           <h2>What Happens Next?</h2>
           <ul>
@@ -32,8 +35,8 @@ const DonorThankYou = () => {
             <Link to="/donation-centers" className="link-button">
               Nearby Donation Centers
             </Link>
-            <Link to="/donor-dashboard" className="link-button">
-              Your Donor Dashboard
+            <Link to="/donor-status" className="link-button">
+              Check Your Donation Status
             </Link>
           </div>
         </div>

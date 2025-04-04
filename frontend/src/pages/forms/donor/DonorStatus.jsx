@@ -8,7 +8,7 @@ const DonorStatusPage = () => {
 
   useEffect(() => {
     // Fetch donor status from backend
-    fetch("http://localhost:5000/api/donor/status")
+    fetch("http://localhost:5000/api/donors/status")
       .then((res) => res.json())
       .then((data) => setDonorStatus(data.status));
   }, []);
@@ -26,16 +26,22 @@ const DonorStatusPage = () => {
 
   const handleAcceptRequest = async (id) => {
     const request = bloodRequests.find((r) => r.id === id);
-    alert(`You have accepted the request from ${request.name}`);
-    setBloodRequests(bloodRequests.filter((r) => r.id !== id));
-
-    // Notify backend to send email & SMS
-    await fetch("http://localhost:5000/api/notify", {
+  
+    const response = await fetch("http://localhost:5000/api/donors/accept-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestId: id }),
+      body: JSON.stringify({ donorId: user.id, requestId: id }),
     });
+  
+    if (response.ok) {
+      const data = await response.json();
+      alert(`Request accepted! Contact the receiver at: ${request.contact_number}`);
+      setBloodRequests(bloodRequests.filter((r) => r.id !== id));
+    } else {
+      alert("Error accepting request");
+    }
   };
+  
 
   return (
     <div className="status-container">

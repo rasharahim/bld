@@ -3,10 +3,11 @@ POST http://localhost:5000/api/auth/register
 Content-Type: application/json
 
 {
-  "fullname": "testuser",
+  "fullname": "shibu",
   "phoneNumber": "1234567",
-  "email": "test@example.com",
-  "password": "password123"
+  "email": "shibu@example.com",
+  "password": "password123",
+  "confirmPassword": "password123"
   
 }
 
@@ -15,8 +16,8 @@ POST http://localhost:5000/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "testuser",
-  "password": "password123"
+  "email": "khaja1829@gmail.com",
+  "password": "mnbvcxz"
 }
 ###
 GET http://localhost:5000/api/profile
@@ -30,6 +31,24 @@ POST http://localhost:5000/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "ami@gmail.com",
-  "password": "zxcvbnm"
+    "email": "ami@gmail.com",
+    "password": "zxcvbnm"
 }
+
+###
+GET http://localhost:5000/api/donors
+###
+GET http://localhost:5000/api/donors/status?filter=approved
+###
+PUT http://localhost:5000/api/donors/40  # Replace :id with actual donor ID
+Content-Type: application/json
+
+{
+   "status": "approved"
+}
+###
+GET http://localhost:5000/api/donors/pending
+###
+POST http://localhost:5000/api/receivers
+###
+GET http://localhost:5000/api/profile

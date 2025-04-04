@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import api from '@/utils/axios';
 import './RequestStatus.css';
 
 const donorIcon = new L.Icon({
@@ -16,59 +17,93 @@ const RequestStatus = () => {
   const [requestStatus, setRequestStatus] = useState('pending');
   const [donors, setDonors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [receiverLocation, setReceiverLocation] = useState({ lat: 37.7749, lng: -122.4194 }); // Default to SF
+  const [error, setError] = useState(null);
+  const [selectedDonor, setSelectedDonor] = useState(null);
+  const [receiverLocation, setReceiverLocation] = useState(null);
+  const [requestDetails, setRequestDetails] = useState(null);
+
+  const token = localStorage.getItem('token');
+
+  const fetchNearbyDonors = async (bloodType, location) => {
+    try {
+      if (!location || !location.lat || !location.lng) {
+        console.error('Invalid receiver location:', location);
+        setError('Invalid receiver location. Please try again later.');
+        return;
+      }
+
+      const response = await api.get('/api/receivers/nearby-donors', {
+        params: {
+          bloodType,
+          latitude: location.lat,
+          longitude: location.lng
+        }
+      });
+
+      if (response.data.success) {
+        setDonors(response.data.data || []);
+      } else {
+        setError(response.data.message || 'Failed to fetch nearby donors');
+      }
+    } catch (error) {
+      console.error('Error fetching nearby donors:', error);
+      setError(error.response?.data?.message || 'Failed to fetch nearby donors');
+    }
+  };
 
   useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setReceiverLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-      }
-    );
-
     const fetchRequestStatus = async () => {
       try {
-        const response = await mockApiGetRequestStatus();
-        setRequestStatus(response.status);
+        const response = await api.get('/api/receivers/my-requests');
+        console.log('Full response data:', response.data);
         
-        if (response.status === 'approved') {
-          const donorResponse = await mockApiGetDonors();
-          const updatedDonors = donorResponse.map(donor => ({
-            ...donor,
-            distance: calculateDistance(receiverLocation.lat, receiverLocation.lng, donor.location.lat, donor.location.lng)
-          }));
-          setDonors(updatedDonors);
+        if (response.data.success && response.data.requests.length > 0) {
+          const latestRequest = response.data.requests[0];
+          console.log('Latest request details:', latestRequest);
+          
+          setRequestStatus(latestRequest.status);
+          setRequestDetails(latestRequest);
+          
+          // Parse coordinates from the latest request
+          const latitude = parseFloat(latestRequest.latitude);
+          const longitude = parseFloat(latestRequest.longitude);
+          console.log('Parsed coordinates:', { latitude, longitude });
+          
+          if (!isNaN(latitude) && !isNaN(longitude)) {
+            const location = { lat: latitude, lng: longitude };
+            console.log('Setting receiver location:', location);
+            setReceiverLocation(location);
+            
+            // Only fetch nearby donors if request is approved
+            if (latestRequest.status === 'approved') {
+              await fetchNearbyDonors(latestRequest.blood_type, location);
+            }
+          } else {
+            console.error('Invalid coordinates in request:', { latitude, longitude });
+            setError('Invalid location coordinates in request');
+          }
+          
+          // Set selected donor if available
+          if (latestRequest.selected_donor_id) {
+            setSelectedDonor(latestRequest.selected_donor_id);
+          }
+        } else {
+          setError('No requests found');
         }
       } catch (error) {
         console.error('Error fetching request status:', error);
+        setError(error.response?.data?.message || 'Failed to fetch request status');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchRequestStatus();
-  }, [receiverLocation]);
-
-  const mockApiGetRequestStatus = () => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve({ status: 'approved' });
-      }, 1000);
-    });
-  };
-
-  const mockApiGetDonors = () => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        resolve([
-          { id: 1, name: 'John Doe', bloodType: 'A+', location: { lat: 37.779, lng: -122.418 }, lastDonation: '3 months ago', contact: 'john@example.com' },
-          { id: 2, name: 'Jane Smith', bloodType: 'A+', location: { lat: 37.772, lng: -122.414 }, lastDonation: '4 months ago', contact: 'jane@example.com' }
-        ]);
-      }, 1000);
-    });
-  };
+    if (token) {
+      fetchRequestStatus();
+    } else {
+      setLoading(false);
+    }
+  }, [token]);
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371; // Radius of the Earth in km
@@ -82,8 +117,55 @@ const RequestStatus = () => {
     return (R * c).toFixed(2); // Distance in km
   };
 
+  const handleSelectDonor = async (donor) => {
+    try {
+      await api.post('/api/receivers/select-donor', {
+        requestId: requestDetails.id,
+        donorId: donor.id
+      });
+
+      setSelectedDonor(donor);
+      alert('Donor selected successfully! You can now contact them.');
+    } catch (error) {
+      console.error('Error selecting donor:', error);
+      alert('Failed to select donor. Please try again.');
+    }
+  };
+
+  const handleCompleteDonation = async () => {
+    try {
+      await api.post('/api/receivers/complete-donation', {
+        requestId: requestDetails.id,
+        donorId: selectedDonor.id
+      });
+
+      setRequestStatus('completed');
+      alert('Donation marked as completed! Thank you for using our service.');
+    } catch (error) {
+      console.error('Error completing donation:', error);
+      alert('Failed to mark donation as completed. Please try again.');
+    }
+  };
+
   if (loading) {
-    return <div className="loading-container">Loading request status...</div>;
+    return (
+      <div className="request-status-container">
+        <div className="loading-container">
+          <p>Loading request status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="request-status-container">
+        <div className="error-container">
+          <p>{error}</p>
+          <Link to="/" className="home-link">← Return to Home</Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -91,7 +173,7 @@ const RequestStatus = () => {
       <h1 className="request-title">Your Blood Request Status</h1>
       
       <div className="status-card">
-        <h2 className="status-title">Request Status</h2>
+        <h2 className="status-title">Request Status: {requestStatus.toUpperCase()}</h2>
         
         {requestStatus === 'pending' && (
           <div className="status-alert pending">
@@ -101,66 +183,100 @@ const RequestStatus = () => {
 
         {requestStatus === 'rejected' && (
           <div className="status-alert rejected">
-            <p>Your request has been rejected. Please contact support.</p>
+            <p>Your request has been rejected. Please contact support for more information.</p>
           </div>
         )}
 
-        {requestStatus === 'approved' && (
+        {requestStatus === 'approved' && !selectedDonor && (
           <div className="status-alert approved">
-            <p>Your request has been approved! See matching donors below.</p>
+            <p>Your request has been approved! Please select a donor from the list below.</p>
+          </div>
+        )}
+
+        {requestStatus === 'approved' && selectedDonor && (
+          <div className="status-alert matched">
+            <h3>Selected Donor Information</h3>
+            <p><strong>Name:</strong> {selectedDonor.full_name}</p>
+            <p><strong>Contact:</strong> {selectedDonor.contact_number}</p>
+            <p><strong>Blood Type:</strong> {selectedDonor.blood_type}</p>
+            <p><strong>Distance:</strong> {selectedDonor.distance} km</p>
+            
+            <button 
+              className="complete-btn"
+              onClick={handleCompleteDonation}
+            >
+              Mark Donation as Completed
+            </button>
+          </div>
+        )}
+
+        {requestStatus === 'completed' && (
+          <div className="status-alert completed">
+            <p>Blood donation has been completed. Thank you for using our service!</p>
           </div>
         )}
       </div>
 
-      {requestStatus === 'approved' && (
+      {requestStatus === 'approved' && !selectedDonor && (
         <>
-          {/* Map View */}
           <div className="map-container">
             <h2>Available Donors Nearby</h2>
-            <MapContainer center={[receiverLocation.lat, receiverLocation.lng]} zoom={13} style={{ height: '400px', width: '100%', borderRadius: '10px', boxShadow: '0px 4px 10px rgba(0,0,0,0.2)' }}>
+            <MapContainer 
+              center={[receiverLocation.lat, receiverLocation.lng]} 
+              zoom={13} 
+              style={{ height: '400px', width: '100%' }}
+            >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              <Marker position={[receiverLocation.lat, receiverLocation.lng]} icon={donorIcon}>
-                <Popup>You are here</Popup>
+              
+              <Marker position={[receiverLocation.lat, receiverLocation.lng]}>
+                <Popup>Your Location</Popup>
               </Marker>
+
               {donors.map(donor => (
-                <Marker key={donor.id} position={[donor.location.lat, donor.location.lng]} icon={donorIcon}>
+                <Marker 
+                  key={donor.id} 
+                  position={[donor.latitude, donor.longitude]} 
+                  icon={donorIcon}
+                >
                   <Popup>
-                    {donor.name} - {donor.bloodType}
-                    <br /> Last Donation: {donor.lastDonation}
-                    <br /> Distance: {donor.distance} km
-                    <br /> Contact: {donor.contact}
+                    <div>
+                      <h3>{donor.donor_name}</h3>
+                      <p>Blood Type: {donor.blood_type}</p>
+                      <p>Distance: {donor.distance} km</p>
+                    </div>
                   </Popup>
                 </Marker>
               ))}
             </MapContainer>
           </div>
 
-          {/* Donor List */}
           <div className="donors-container">
-            <h2 className="donors-title">Available Donors</h2>
-            
-            {donors.length > 0 ? (
-              <div className="donors-list">
-                {donors.map(donor => (
+            <h2>Available Donors</h2>
+            <div className="donors-list">
+              {donors.length === 0 ? (
+                <div className="no-donors-message">
+                  <p>No donors available at the moment for blood type {requestDetails?.blood_type}.</p>
+                  <p>Please check back later or contact the hospital for immediate assistance.</p>
+                </div>
+              ) : (
+                donors.map(donor => (
                   <div key={donor.id} className="donor-card">
                     <div className="donor-info">
-                      <h3 className="donor-name">{donor.name}</h3>
-                      <p className="donor-detail">Blood Type: {donor.bloodType}</p>
-                      <p className="donor-detail">Last Donation: {donor.lastDonation}</p>
-                      <p className="donor-detail">Distance: {donor.distance} km</p>
+                      <h3>{donor.donor_name}</h3>
+                      <p><strong>Blood Type:</strong> {donor.blood_type}</p>
+                      <p><strong>Distance:</strong> {donor.distance} km</p>
+                      <p><strong>Contact:</strong> {donor.donor_phone}</p>
                     </div>
                     <button
-                      onClick={() => alert(`You've selected donor ${donor.id}. Contact details will be shared.`)}
                       className="select-donor-btn"
+                      onClick={() => handleSelectDonor(donor)}
                     >
                       Select Donor
                     </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="no-donors">No donors available at the moment.</p>
-            )}
+                ))
+              )}
+            </div>
           </div>
         </>
       )}

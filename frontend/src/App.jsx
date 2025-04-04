@@ -50,7 +50,7 @@ const App = () => {
         <Route path="/donor-thanks" element={<DonorThanks />} />
         <Route path="/donor-status" element={<DonorStatusPage />} />
         <Route path="/receiver-form" element={<ReceiverForm />} />
-        <Route path="/receiver-thanks" element={<ReceiverThanks />} />
+        <Route path="/receiver/thanks" element={<ReceiverThanks />} />
         <Route path="/request-status" element={<RequestStatus />} />
         <Route path="/profile" element={<ProfilePage />} />
         {/* AdminDashboard is already imported above */}
