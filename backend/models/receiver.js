@@ -63,10 +63,43 @@ class Receiver {
   }
 
   static async getById(id) {
-    const sql = 'SELECT * FROM receivers WHERE id = ?';
+    const sql = `
+      SELECT 
+        r.*,
+        u.full_name as user_full_name,
+        u.phone_number as user_phone,
+        d.id as donor_id,
+        d.full_name as donor_name,
+        d.contact_number as donor_contact,
+        d.blood_type as donor_blood_type,
+        d.location_lat as donor_latitude,
+        d.location_lng as donor_longitude,
+        d.location_address as donor_address,
+        (
+          6371 * acos(
+            cos(radians(r.location_lat)) * cos(radians(d.location_lat)) *
+            cos(radians(d.location_lng) - radians(r.location_lng)) +
+            sin(radians(r.location_lat)) * sin(radians(d.location_lat))
+          )
+        ) AS distance_km
+      FROM receivers r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN donors d ON r.selected_donor_id = d.id
+      WHERE r.id = ?
+    `;
+    
     try {
       const [rows] = await db.execute(sql, [id]);
-      return rows[0];
+      if (rows.length === 0) return null;
+      
+      const request = rows[0];
+      
+      // Format the distance if it exists
+      if (request.distance_km) {
+        request.distance = `${parseFloat(request.distance_km).toFixed(2)} km`;
+      }
+      
+      return request;
     } catch (error) {
       throw error;
     }
@@ -93,4 +126,4 @@ class Receiver {
   }
 }
 
-module.exports = Receiver; 
+module.exports = Receiver;

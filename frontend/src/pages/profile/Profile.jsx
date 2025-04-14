@@ -1,22 +1,23 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Gps from "../../components/Gps";
+import defaultAvatar from "../../assets/default-avatar";
 import "./ProfileStyles.css";
 
 const ProfilePage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState({
-    fullName: "",
+    full_name: "",
     age: "",
-    bloodType: "",
-    contactNumber: "",
-    dateOfBirth: "",
-    isAvailable: false,
+    blood_type: "",
+    phone_number: "",
+    dob: "",
+    is_available: false,
     location_lat: null,
     location_lng: null,
     address: "",
     email: "",
-    profilePicture: null
+    profile_picture: null
   });
 
   const [editMode, setEditMode] = useState(false);
@@ -24,6 +25,7 @@ const ProfilePage = () => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Not set';
@@ -38,15 +40,10 @@ const ProfilePage = () => {
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem('token');
-        console.log('Token from localStorage:', token); // Debug log
-
         if (!token) {
-          console.log('No token found, redirecting to login'); // Debug log
           navigate('/login');
           return;
         }
-
-        console.log('Making profile request with token:', token.substring(0, 20) + '...'); // Debug log
 
         const response = await fetch('http://localhost:5000/api/profile', {
           headers: {
@@ -55,31 +52,15 @@ const ProfilePage = () => {
           }
         });
 
-        console.log('Profile response status:', response.status); // Debug log
-
         if (!response.ok) {
           const errorData = await response.json();
-          console.error('Profile response error:', errorData); // Debug log
           throw new Error(errorData.message || 'Failed to fetch profile');
         }
 
         const data = await response.json();
-        console.log('Profile data received:', data); // Debug log
         
         if (data.success) {
-          setUser(prevUser => ({
-            ...prevUser,
-            ...data.profile,
-            location_lat: data.profile.location_lat || null,
-            location_lng: data.profile.location_lng || null,
-            address: data.profile.address || "",
-            bloodType: data.profile.bloodType || "",
-            age: data.profile.age || "",
-            contactNumber: data.profile.contactNumber || "",
-            dateOfBirth: data.profile.dateOfBirth || "",
-            email: data.profile.email || "",
-            profilePicture: data.profile.profilePicture || null
-          }));
+          setUser(data.profile);
           setActivities(data.profile.activities || []);
         } else {
           throw new Error(data.message || 'Failed to fetch profile');
@@ -99,7 +80,7 @@ const ProfilePage = () => {
     const { name, value } = e.target;
     setUser(prev => ({
       ...prev,
-      [name]: value || "" // Ensure empty string instead of undefined
+      [name]: value || ""
     }));
   };
 
@@ -110,30 +91,68 @@ const ProfilePage = () => {
   const handleLocationUpdate = (locationData) => {
     setUser(prev => ({
       ...prev,
-      location_lat: locationData.lat || null,
-      location_lng: locationData.lng || null,
-      address: locationData.address || ""
+      location_lat: locationData.latitude || null,
+      location_lng: locationData.longitude || null,
+      address: locationData.address || null
     }));
+  };
+
+  const handleProfilePictureChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      setUploadingPicture(true);
+      const formData = new FormData();
+      formData.append('profilePicture', file);
+
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/profile/profile-picture', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload profile picture');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setUser(prev => ({
+          ...prev,
+          profile_picture: data.profilePicture
+        }));
+        alert('Profile picture updated successfully!');
+      }
+    } catch (err) {
+      console.error('Error uploading profile picture:', err);
+      alert('Failed to upload profile picture');
+    } finally {
+      setUploadingPicture(false);
+    }
   };
 
   const handleSaveProfile = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/profile/update', {
+      const response = await fetch('http://localhost:5000/api/profile', {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          fullName: user.fullName || "",
-          contactNumber: user.contactNumber || "",
-          dateOfBirth: user.dateOfBirth || "",
-          bloodType: user.bloodType || "",
-          isAvailable: Boolean(user.isAvailable),
+          fullName: user.full_name || null,
+          contactNumber: user.phone_number || null,
+          dateOfBirth: user.dob || null,
+          bloodType: user.blood_type || null,
+          isAvailable: Boolean(user.is_available),
           location_lat: user.location_lat || null,
           location_lng: user.location_lng || null,
-          address: user.address || ""
+          address: user.address || null
         })
       });
 
@@ -206,7 +225,7 @@ const ProfilePage = () => {
 
       const data = await response.json();
       if (data.success) {
-        setUser(prev => ({ ...prev, isAvailable: data.isAvailable }));
+        setUser(prev => ({ ...prev, is_available: data.isAvailable }));
         alert(data.message);
       }
     } catch (err) {
@@ -261,7 +280,7 @@ const ProfilePage = () => {
           <h2>My Profile</h2>
           <div className="profile-status">
             <span className="status-badge active">Active Donor</span>
-            {user.isAvailable && (
+            {user.is_available && (
               <span className="availability-badge available">Available to Donate</span>
             )}
           </div>
@@ -269,19 +288,45 @@ const ProfilePage = () => {
 
         <div className="profile-content">
           <div className="profile-section">
+            <div className="profile-picture-container">
+              <div className="profile-picture">
+                <img 
+                  src={user.profile_picture || defaultAvatar} 
+                  alt="Profile" 
+                  onError={(e) => e.target.src = defaultAvatar}
+                />
+                {editMode && (
+                  <label className="picture-upload-btn" title="Upload new picture">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePictureChange}
+                      disabled={uploadingPicture}
+                    />
+                    <i className="fas fa-camera"></i>
+                  </label>
+                )}
+              </div>
+            </div>
+
             <div className="profile-details">
               <div className="detail-group">
                 <label>Full Name</label>
                 {editMode ? (
                   <input 
                     type="text" 
-                    name="fullName" 
-                    value={user.fullName} 
+                    name="full_name" 
+                    value={user.full_name} 
                     onChange={handleInputChange} 
                   />
                 ) : (
-                  <p>{user.fullName}</p>
+                  <p>{user.full_name || 'Not set'}</p>
                 )}
+              </div>
+
+              <div className="detail-group">
+                <label>Email</label>
+                <p>{user.email || 'Not set'}</p>
               </div>
 
               <div className="detail-group">
@@ -289,12 +334,12 @@ const ProfilePage = () => {
                 {editMode ? (
                   <input 
                     type="date" 
-                    name="dateOfBirth" 
-                    value={user.dateOfBirth} 
+                    name="dob" 
+                    value={user.dob} 
                     onChange={handleInputChange} 
                   />
                 ) : (
-                  <p>{formatDate(user.dateOfBirth)}</p>
+                  <p>{formatDate(user.dob)}</p>
                 )}
               </div>
 
@@ -307,8 +352,8 @@ const ProfilePage = () => {
                 <label>Blood Type</label>
                 {editMode ? (
                   <select 
-                    name="bloodType" 
-                    value={user.bloodType || ''} 
+                    name="blood_type" 
+                    value={user.blood_type || ''} 
                     onChange={handleInputChange}
                   >
                     <option value="">Select Blood Type</option>
@@ -322,7 +367,7 @@ const ProfilePage = () => {
                     <option value="AB-">AB-</option>
                   </select>
                 ) : (
-                  <p>{user.bloodType || 'Not set'}</p>
+                  <p>{user.blood_type || 'Not set'}</p>
                 )}
               </div>
 
@@ -331,17 +376,17 @@ const ProfilePage = () => {
                 {editMode ? (
                   <input 
                     type="text" 
-                    name="contactNumber" 
-                    value={user.contactNumber} 
+                    name="phone_number" 
+                    value={user.phone_number} 
                     onChange={handleInputChange} 
                   />
                 ) : (
-                  <p>{user.contactNumber}</p>
+                  <p>{user.phone_number || 'Not set'}</p>
                 )}
               </div>
 
               <div className="detail-group">
-                <label>Location:</label>
+                <label>Location</label>
                 {editMode ? (
                   <div className="location-update">
                     <Gps onLocationUpdate={handleLocationUpdate} />
@@ -354,18 +399,18 @@ const ProfilePage = () => {
                     </div>
                   </div>
                 ) : (
-                  <span>{user.address || 'No location set'}</span>
+                  <p>{user.address || 'No location set'}</p>
                 )}
               </div>
 
               <div className="detail-group">
-                <label>Availability Status:</label>
+                <label>Availability Status</label>
                 <div className="availability-toggle">
                   <button
-                    className={`toggle-button ${user.isAvailable ? 'available' : 'unavailable'}`}
+                    className={`toggle-button ${user.is_available ? 'available' : 'unavailable'}`}
                     onClick={toggleAvailability}
                   >
-                    {user.isAvailable ? 'Available' : 'Unavailable'}
+                    {user.is_available ? 'Available' : 'Unavailable'}
                   </button>
                 </div>
               </div>
@@ -389,156 +434,119 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          <div className="security-section">
-            <h3>Account Security</h3>
-            <div className="password-form">
-              <div className="form-group">
-                <label>Current Password</label>
-                <input 
-                  type="password" 
-                  name="oldPassword" 
-                  value={passwords.oldPassword}
-                  onChange={handlePasswordChange}
-                  placeholder="Enter current password" 
-                />
-              </div>
-              <div className="form-group">
-                <label>New Password</label>
-                <input 
-                  type="password" 
-                  name="newPassword" 
-                  value={passwords.newPassword}
-                  onChange={handlePasswordChange}
-                  placeholder="Enter new password" 
-                />
-              </div>
-              <button 
-                className="update-btn"
-                onClick={handlePasswordUpdate}
-                disabled={!passwords.oldPassword || !passwords.newPassword}
-              >
-                Update Password
-              </button>
+          {/* Current Status Section */}
+          <div className="current-status-section">
+            <h3>Current Status</h3>
+            <div className="status-cards">
+              {activities.filter(a => a.isPending).length > 0 ? (
+                activities
+                  .filter(activity => activity.isPending)
+                  .map(activity => (
+                    <div key={`current-${activity.id}`} className={`status-card ${activity.type.toLowerCase()}`}>
+                      <div className="status-icon">
+                        {activity.type === "Donation" ? (
+                          <i className="fas fa-tint"></i>
+                        ) : (
+                          <i className="fas fa-hand-holding-medical"></i>
+                        )}
+                      </div>
+                      <div className="status-details">
+                        <h4>{activity.type} Status</h4>
+                        <p className="status-text">{activity.status}</p>
+                        {activity.bloodType && <p>Blood Type: {activity.bloodType}</p>}
+                        {activity.location && <p>Location: {activity.location}</p>}
+                        {activity.hospital && <p>Hospital: {activity.hospital}</p>}
+                        <div className="status-actions">
+                          {activity.type === "Donation" && (
+                            <button 
+                              className={`availability-btn ${user.is_available ? 'available' : 'unavailable'}`}
+                              onClick={toggleAvailability}
+                            >
+                              {user.is_available ? 'Make Unavailable' : 'Make Available'}
+                            </button>
+                          )}
+                          {activity.type === "Request" && (
+                            <button 
+                              className="cancel-request-btn"
+                              onClick={() => handleCancelRequest(activity.id)}
+                            >
+                              Cancel Request
+                            </button>
+                          )}
+                          <Link
+                            to={activity.type === "Request" ? 
+                                `/request-status/${activity.id}` : 
+                                `/donor-status/${activity.id}`}
+                            className="status-btn"
+                          >
+                            View Details
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+              ) : (
+                <div className="no-current-status">
+                  <p>No active donations or requests</p>
+                  <div className="action-links">
+                    <Link to="/donor-form" className="action-link">
+                      <i className="fas fa-tint"></i> Register as Donor
+                    </Link>
+                    <Link to="/receiver-form" className="action-link">
+                      <i className="fas fa-hand-holding-medical"></i> Request Blood
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Activities History Section */}
           <div className="activities-section">
-            <h3>My Activities</h3>
-            {loading ? (
-              <div className="loading-spinner">Loading activities...</div>
-            ) : (
-              <>
-                {activities.filter(a => a.isPending).length > 0 && (
-                  <div className="pending-section">
-                    <h4>Pending Actions</h4>
-                    <div className="activities-list">
-                      {activities
-                        .filter(activity => activity.isPending)
-                        .map(activity => (
-                          <div key={`pending-${activity.id}`} className={`activity-card pending ${activity.type.toLowerCase()}`}>
-                            <div className="activity-icon">
-                              {activity.type === "Donation" ? (
-                                <i className="fas fa-tint"></i>
-                              ) : (
-                                <i className="fas fa-hand-holding-medical"></i>
-                              )}
-                            </div>
-                            <div className="activity-details">
-                              <div className="activity-header">
-                                <h4>{activity.type}</h4>
-                                <span className="activity-date">
-                                  {formatDate(activity.date)}
-                                </span>
-                              </div>
-                              {activity.location && <p>Location: {activity.location}</p>}
-                              {activity.hospital && <p>Hospital: {activity.hospital}</p>}
-                              {activity.bloodType && <p>Blood Type: {activity.bloodType}</p>}
-                              {activity.quantity && <p>Quantity: {activity.quantity}</p>}
-                              <div className="activity-footer">
-                                <span className={`status ${activity.status.toLowerCase().replace(' ', '-')}`}>
-                                  {activity.status}
-                                </span>
-                                
-                                {activity.type === "Donation" && (
-                                  <button 
-                                    className={`availability-btn ${user.isAvailable ? 'available' : 'unavailable'}`}
-                                    onClick={toggleAvailability}
-                                  >
-                                    {user.isAvailable ? 'Make Unavailable' : 'Make Available'}
-                                  </button>
-                                )}
-                                
-                                {activity.type === "Request" && activity.isPending && (
-                                  <button 
-                                    className="cancel-request-btn"
-                                    onClick={() => handleCancelRequest(activity.id)}
-                                  >
-                                    Cancel Request
-                                  </button>
-                                )}
-                                
-                                <Link
-                                  to={activity.type === "Request" ? 
-                                      `/request-status/${activity.id}` : 
-                                      `/donation-status/${activity.id}`}
-                                  className="status-btn"
-                                >
-                                  Check Status
-                                </Link>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+            <h3>Activity History</h3>
+            {activities.length > 0 ? (
+              <div className="activities-list">
+                {activities.map(activity => (
+                  <div key={activity.id} className={`activity-card ${activity.type.toLowerCase()}`}>
+                    <div className="activity-icon">
+                      {activity.type === "Donation" ? (
+                        <i className="fas fa-tint"></i>
+                      ) : (
+                        <i className="fas fa-hand-holding-medical"></i>
+                      )}
+                    </div>
+                    <div className="activity-details">
+                      <div className="activity-header">
+                        <h4>{activity.type}</h4>
+                        <span className="activity-date">
+                          {formatDate(activity.date)}
+                        </span>
+                      </div>
+                      <div className="activity-info">
+                        {activity.bloodType && <p>Blood Type: {activity.bloodType}</p>}
+                        {activity.location && <p>Location: {activity.location}</p>}
+                        {activity.hospital && <p>Hospital: {activity.hospital}</p>}
+                        {activity.quantity && <p>Quantity: {activity.quantity}</p>}
+                      </div>
+                      <div className="activity-footer">
+                        <span className={`status ${activity.status.toLowerCase().replace(' ', '-')}`}>
+                          {activity.status}
+                        </span>
+                        <Link
+                          to={activity.type === "Request" ? 
+                              `/request-status/${activity.id}` : 
+                              `/donor-status`}
+                          className="status-btn"
+                        >
+                          View Details
+                        </Link>
+                      </div>
                     </div>
                   </div>
-                )}
-
-                <h4>All Activities</h4>
-                {activities.length > 0 ? (
-                  <div className="activities-list">
-                    {activities.map(activity => (
-                      <div key={activity.id} className={`activity-card ${activity.type.toLowerCase()}`}>
-                        <div className="activity-icon">
-                          {activity.type === "Donation" ? (
-                            <i className="fas fa-tint"></i>
-                          ) : (
-                            <i className="fas fa-hand-holding-medical"></i>
-                          )}
-                        </div>
-                        <div className="activity-details">
-                          <div className="activity-header">
-                            <h4>{activity.type}</h4>
-                            <span className="activity-date">
-                              {formatDate(activity.date)}
-                            </span>
-                          </div>
-                          {activity.location && <p>Location: {activity.location}</p>}
-                          {activity.hospital && <p>Hospital: {activity.hospital}</p>}
-                          {activity.bloodType && <p>Blood Type: {activity.bloodType}</p>}
-                          {activity.quantity && <p>Quantity: {activity.quantity}</p>}
-                          <div className="activity-footer">
-                            <span className={`status ${activity.status.toLowerCase().replace(' ', '-')}`}>
-                              {activity.status}
-                            </span>
-                            {activity.isPending && (
-                              <Link
-                                to={activity.type === "Request" ? 
-                                    `/request-status/${activity.id}` : 
-                                    `/donation-status/${activity.id}`}
-                                className="status-btn"
-                              >
-                                Check Status
-                              </Link>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-activities">No activities found</p>
-                )}
-              </>
+                ))}
+              </div>
+            ) : (
+              <p className="no-activities">No previous activities found</p>
             )}
           </div>
 

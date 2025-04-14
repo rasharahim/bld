@@ -19,15 +19,11 @@ import { lazy } from 'react';
 import ProfilePage from './pages/profile/Profile';
 const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard')); // Lazy load AdminDashboard
 
-
-
-
-
 const App = () => {
-  const location = useLocation(); // Get the current route location
+  const location = useLocation();
 
   // Define routes where the Dashboard should NOT be displayed
-  const excludeDashboardRoutes = ['/login', '/register','/'];
+  const excludeDashboardRoutes = ['/login', '/register', '/', '/admin-dashboard'];
 
   // Check if the current route is in the exclude list
   const shouldShowDashboard = !excludeDashboardRoutes.includes(location.pathname);
@@ -39,26 +35,31 @@ const App = () => {
 
       {/* Routes */}
       <Routes>
-        <Route path="/Login" element={<Login />} />
-        <Route path="/home" element={<Home />} />
+        {/* Auth Routes */}
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* Main Routes */}
+        <Route path="/dashboard" element={<Home />} />
+        <Route path="/home" element={<Home />} />
         <Route path="/info" element={<Info />} />
-        <Route path="/" element={<Login />} />
-        {/*<Route path="/donate" element={<Donate />} /> */}
+        <Route path="/profile" element={<ProfilePage />} />
+        
+        {/* Donor Routes */}
         <Route path="/donor-form" element={<DonorForm />} />
         <Route path="/donor-thanks" element={<DonorThanks />} />
-        <Route path="/donor-status" element={<DonorStatusPage />} />
+        <Route path="/donor-status/:donorId" element={<DonorStatusPage />} />
+        
+        {/* Receiver Routes */}
         <Route path="/receiver-form" element={<ReceiverForm />} />
-        <Route path="/receiver/thanks" element={<ReceiverThanks />} />
-        <Route path="/request-status" element={<RequestStatus />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        {/* AdminDashboard is already imported above */}
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/receiver-thanks" element={<ReceiverThanks />} />
+        <Route path="/receiver/request-status" element={<RequestStatus />} />
+        <Route path="/request-status/:requestId" element={<RequestStatus />} />
 
-        {/* Add other routes as needed */}
-        
-        
+        {/* Admin Routes */}
+        <Route path="/admin-dashboard" element={<AdminDashboard />} />
       </Routes>
     </>
   );

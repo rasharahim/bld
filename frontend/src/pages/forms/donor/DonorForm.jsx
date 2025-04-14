@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import auth from "../../../utils/auth";  // Adjusted based on folder structure
+import auth from "../../../utils/auth";
 import "../FormStyles.css";
 import countryData from "/src/data/countryData.json";
 import Gps from "@/components/Gps";
 import axios from 'axios';
-
 
 const DonorForm = () => {
   // Constants
@@ -34,14 +33,24 @@ const DonorForm = () => {
     district: "",
     street: "",
     contactNumber: "",
-    location: { lat: null, lng: null, address: "" },
+    location: { 
+      lat: null, 
+      lng: null, 
+      address: "" 
+    },
+    locationMethod: "address",
+    isLocationLoading: false,
   });
 
   const [errors, setErrors] = useState({});
   const [states, setStates] = useState([]);
   const [districts, setDistricts] = useState([]);
-  const [locationMethod, setLocationMethod] = useState("address");
-  const navigate = useNavigate(); // Add this line
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    console.log("LOCATION STATE UPDATED TO:", donor.location);
+  }, [donor.location]);
 
   // Calculate age from DOB
   useEffect(() => {
@@ -69,7 +78,6 @@ const DonorForm = () => {
     }));
   };
 
-  // Handlers
   const handleChange = (e) => {
     const { name, value } = e.target;
     setDonor({ ...donor, [name]: value });
@@ -109,145 +117,292 @@ const DonorForm = () => {
     }
   };
 
-  const handleLocationChange = (newLocation) => {
-    setDonor((prev) => ({ 
+  const handleLocationFound = async (location) => {
+    console.log("Raw location data received:", location);
+    
+    // Format the complete address
+    const formattedAddress = location.address || [
+      location.street,
+      location.district,
+      location.state,
+      location.country
+    ].filter(Boolean).join(', ');
+
+    // Create the location object with proper type conversion
+    const locationData = {
+      lat: parseFloat(location.latitude || location.lat || 0),
+      lng: parseFloat(location.longitude || location.lng || 0),
+      address: formattedAddress,
+      country: location.country || '',
+      state: location.state || '',
+      district: location.district || '',
+      street: location.street || ''
+    };
+
+    console.log("Processing location data:", locationData);
+
+    try {
+      // First update the state immediately
+      setDonor(prev => ({
+        ...prev,
+        location: {
+          lat: locationData.lat,
+          lng: locationData.lng,
+          address: locationData.address
+        },
+        country: locationData.country,
+        state: locationData.state,
+        district: locationData.district,
+        street: locationData.street,
+        locationMethod: "gps",
+        isLocationLoading: false
+      }));
+
+      // Then store in localStorage
+      localStorage.setItem('donorLocation', JSON.stringify({
+        lat: locationData.lat,
+        lng: locationData.lng,
+        address: locationData.address,
+        country: locationData.country,
+        state: locationData.state,
+        district: locationData.district,
+        street: locationData.street
+      }));
+
+      console.log("Location data stored and state updated:", locationData);
+
+      // Verify the data
+      const verifyData = {
+        state: locationData,
+        localStorage: JSON.parse(localStorage.getItem('donorLocation'))
+      };
+      console.log("Verification data:", verifyData);
+    } catch (error) {
+      console.error("Error handling location:", error);
+      alert("There was an error saving your location. Please try again.");
+    }
+  };
+
+  // Add useEffect to restore location data on component mount
+  useEffect(() => {
+    const savedLocation = localStorage.getItem('donorLocation');
+    if (savedLocation && donor.locationMethod === "gps") {
+      const parsedLocation = JSON.parse(savedLocation);
+      setDonor(prev => ({
       ...prev, 
       location: {
-        lat: newLocation.lat,
-        lng: newLocation.lng,
-        address: newLocation.address || ""
-      }
-    }));
-    setErrors(prev => ({ ...prev, location: undefined }));
+          lat: parsedLocation.lat,
+          lng: parsedLocation.lng,
+          address: parsedLocation.address
+        },
+        country: parsedLocation.country,
+        state: parsedLocation.state,
+        district: parsedLocation.district,
+        street: parsedLocation.street
+      }));
+    }
+  }, []);
+
+  const handleLocationError = (error) => {
+    console.error("GPS Error:", error);
+    setDonor(prev => ({ ...prev, isLocationLoading: false }));
+    alert("Failed to get location. Please try again or use manual address.");
   };
 
   const validateForm = () => {
-    let validationErrors = {};
+    const newErrors = {};
+    console.log('Starting form validation...');
 
-    if (!donor.fullName.trim()) validationErrors.fullName = "Full Name is required.";
-    if (!donor.dob) validationErrors.dob = "Date of Birth is required.";
-    if (!donor.age || isNaN(donor.age) || donor.age < 18 || donor.age > 65)
-      validationErrors.age = "Age must be between 18 and 65.";
-    if (!donor.weight || isNaN(donor.weight) || donor.weight < 45)
-      validationErrors.weight = "Minimum weight requirement is 45kg.";
-    if (!donor.bloodType) validationErrors.bloodType = "Please select a blood type.";
-    if (donor.hasDonatedBefore) {
-      if (!donor.lastDonationDate) {
-        validationErrors.lastDonationDate = "Please provide your last donation date";
-      }
-      if (donor.donationGap < 3) {
-        validationErrors.donationGap = "Minimum donation gap is 3 months.";
-      }
-    }
+    // Basic field validation
+    if (!donor.fullName.trim()) newErrors.fullName = 'Full name is required';
+    if (!donor.dob) newErrors.dob = 'Date of birth is required';
+    if (!donor.age) newErrors.age = 'Age is required';
+    if (!donor.weight) newErrors.weight = 'Weight is required';
+    if (!donor.bloodType) newErrors.bloodType = 'Blood type is required';
+    if (!donor.contactNumber) newErrors.contactNumber = 'Contact number is required';
+    if (!donor.availabilityStart) newErrors.availabilityStart = 'Availability start time is required';
+    if (!donor.availabilityEnd) newErrors.availabilityEnd = 'Availability end time is required';
 
-    const hasRestrictedCondition = donor.healthCondition.some((condition) =>
-      restrictedConditions.includes(condition)
-    );
-
-    if (hasRestrictedCondition) {
-      validationErrors.healthCondition = "You are not eligible to donate due to health conditions.";
-    }
-
-    if (!/^\d{10}$/.test(donor.contactNumber))
-      validationErrors.contactNumber = "Enter a valid 10-digit phone number.";
-    if (!donor.availabilityStart || !donor.availabilityEnd)
-      validationErrors.availabilityTime = "Please select an availability time range.";
-
-    if (locationMethod === "address") {
-      if (!donor.country) validationErrors.country = "Country is required.";
-      if (!donor.state) validationErrors.state = "State is required.";
-      if (!donor.district) validationErrors.district = "District is required.";
-      if (!donor.street) validationErrors.street = "Street address is required.";
-    }
-    setErrors(validationErrors);
-    return Object.keys(validationErrors).length === 0;
-  };
-
-  const geocodeAddress = async (address) => {
-    const apiKey = import.meta.env.VITE_OPENCAGE_API_KEY;
-    if (!apiKey) {
-      console.error("API key is missing. Please check your .env file.");
-      setErrors(prev => ({ ...prev, location: "Unable to geocode address. API key missing." }));
-      return null;
-    }
-
-    const formattedAddress = `${address.street}, ${address.district}, ${address.state}, ${address.country}`;
-    const url = `https://api.opencagedata.com/geocode/v1/json?key=${apiKey}&q=${encodeURIComponent(formattedAddress)}&pretty=1&no_annotations=1`;
-
-    try {
-      const response = await fetch(url);
-      const data = await response.json();
+    // Location validation
+    if (donor.locationMethod === "gps") {
+      console.log('Validating GPS location:', donor.location);
       
-      if (data.results && data.results.length > 0) {
-        const { lat, lng } = data.results[0].geometry;
-        return {
-          lat,
-          lng,
-          address: formattedAddress
-        };
+      // Check current state first
+      const hasValidStateLocation = donor.location && 
+        typeof donor.location.lat === 'number' && 
+        donor.location.lat !== 0 &&
+        typeof donor.location.lng === 'number' && 
+        donor.location.lng !== 0 &&
+        donor.location.address;
+
+      // Also check localStorage as backup
+      const savedLocation = localStorage.getItem('donorLocation');
+      let locationData = null;
+      try {
+        locationData = savedLocation ? JSON.parse(savedLocation) : null;
+      } catch (error) {
+        console.error('Error parsing saved location:', error);
       }
-      throw new Error('No coordinates found for this address');
-    } catch (error) {
-      console.error('Geocoding error:', error);
-      setErrors(prev => ({ ...prev, location: "Failed to get coordinates for this address." }));
-      return null;
+
+      const hasValidSavedLocation = locationData && 
+        typeof locationData.lat === 'number' && 
+        locationData.lat !== 0 &&
+        typeof locationData.lng === 'number' && 
+        locationData.lng !== 0 &&
+        locationData.address;
+
+      console.log('Location validation:', {
+        stateValid: hasValidStateLocation,
+        savedValid: hasValidSavedLocation,
+        stateLocation: donor.location,
+        savedLocation: locationData
+      });
+
+      if (!hasValidStateLocation && !hasValidSavedLocation) {
+        newErrors.location = 'Please get your current location';
+        console.log('GPS location validation failed - invalid or missing data');
+      } else {
+        console.log('GPS location validation passed');
+      }
+    } else {
+      // Address validation
+      if (!donor.country) newErrors.country = 'Country is required';
+      if (!donor.state) newErrors.state = 'State is required';
+      if (!donor.district) newErrors.district = 'District is required';
+      if (!donor.street) newErrors.street = 'Street address is required';
     }
+
+    // Health condition validation
+    if (donor.healthCondition.length === 0) {
+      newErrors.healthCondition = 'Please select at least one health condition';
+    }
+
+    // Previous donation validation
+    if (donor.hasDonatedBefore) {
+      if (!donor.lastDonationDate) newErrors.lastDonationDate = 'Last donation date is required';
+      if (!donor.donationGap) newErrors.donationGap = 'Donation gap is required';
+    }
+
+    setErrors(newErrors);
+    const isValid = Object.keys(newErrors).length === 0;
+    console.log('Validation result:', isValid ? 'Valid' : 'Invalid', newErrors);
+    return isValid;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    console.log('Form submission started');
 
     try {
-      let locationData = donor.location;
-
-      // If using address method, geocode the address
-      if (locationMethod === 'address') {
-        const addressData = {
-          street: donor.street,
-          district: donor.district,
-          state: donor.state,
-          country: donor.country
-        };
-        
-        locationData = await geocodeAddress(addressData);
-        if (!locationData) {
-          setErrors(prev => ({ ...prev, location: "Failed to get coordinates for this address." }));
-          return;
+      // Get the latest location data if using GPS
+      if (donor.locationMethod === "gps") {
+        const savedLocation = localStorage.getItem('donorLocation');
+        if (savedLocation) {
+          const locationData = JSON.parse(savedLocation);
+          console.log('Retrieved saved location data:', locationData);
+          
+          // Update donor state with saved location data and wait for it to complete
+          await new Promise(resolve => {
+            setDonor(prev => {
+              const updatedDonor = {
+                ...prev,
+                location: {
+                  lat: locationData.lat,
+                  lng: locationData.lng,
+                  address: locationData.address
+                },
+                country: locationData.country,
+                state: locationData.state,
+                district: locationData.district,
+                street: locationData.street
+              };
+              console.log("Updated donor state before validation:", updatedDonor);
+              return updatedDonor;
+            });
+            resolve();
+          });
         }
       }
 
-      // Prepare donor data with location
-      const donorData = {
-        ...donor,
-        location: locationData
+      // Wait for state update to complete before validation
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      console.log('Current donor state before validation:', donor);
+      
+      // Validate form
+      if (!validateForm()) {
+        console.log('Form validation failed');
+        return;
+      }
+
+      setIsSubmitting(true);
+      console.log('Form validation passed, proceeding with submission');
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login to register as a donor.');
+        navigate('/login');
+      return;
+    }
+  
+      // Get the final location data for the request
+      const locationData = donor.locationMethod === "gps" 
+        ? JSON.parse(localStorage.getItem('donorLocation'))
+        : null;
+
+      console.log('Location data for request:', locationData);
+
+      const requestData = {
+        fullName: donor.fullName,
+        bloodType: donor.bloodType,
+        availabilityStart: donor.availabilityStart,
+        availabilityEnd: donor.availabilityEnd,
+        contactNumber: donor.contactNumber,
+        dob: donor.dob,
+        age: donor.age,
+        weight: donor.weight,
+        lastDonation: donor.lastDonationDate || '',
+        medicalConditions: donor.healthCondition.join(', '),
+        hasDonatedBefore: donor.hasDonatedBefore,
+        donationGap: donor.donationGap || '',
+        healthCondition: donor.healthCondition.join(', '),
+        isAvailable: true,
+        isVerified: false,
+        status: 'pending',
+        country: locationData ? locationData.country : donor.country,
+        state: locationData ? locationData.state : donor.state,
+        district: locationData ? locationData.district : donor.district,
+        address: locationData ? locationData.street : donor.street,
+        locationAddress: locationData ? locationData.address : `${donor.street}, ${donor.district}, ${donor.state}, ${donor.country}`,
+        location_lat: locationData ? locationData.lat : null,
+        location_lng: locationData ? locationData.lng : null
       };
 
-      const response = await axios.post(
-        `http://localhost:5000/api/donors/createDonor`,  // Use Vite env variable
-        donorData,
-        {
+      console.log('Final request data:', requestData);
+
+      const response = await axios.post('http://localhost:5000/api/donors/createDonor', requestData, {
           headers: { 
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${auth.getToken()}`
-          }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-      );
+      });
+
+      console.log('Server response:', response.data);
       
       if (response.data.success) {
-        alert('Donor registration successful! Please wait for admin approval.');
-        navigate('/dashboard');
+        navigate('/donor-thanks');
+      } else {
+        alert(response.data.message || 'Failed to submit form. Please try again.');
       }
     } catch (error) {
-        alert(
-            error.response?.data?.message || 
-            `Submission failed: ${error.message}`
-        );
-
-        if (error.message.includes("token")) {
-            auth.removeToken();
-            navigate('/login');
-        }
+      console.error('Submission error:', error);
+      if (error.response?.data?.missingFields) {
+        alert(`Missing required fields: ${error.response.data.missingFields.join(', ')}`);
+      } else {
+        alert(error.response?.data?.message || 'Failed to submit form. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -268,7 +423,6 @@ const DonorForm = () => {
     }
   }, [donor.state]);
 
-  // Render
   return (
     <div className="form-container">
       <h2>Blood Donor Form</h2>
@@ -359,8 +513,8 @@ const DonorForm = () => {
                 onChange={handleChange} 
                 max={new Date().toISOString().split('T')[0]} 
               />
-              {errors.lastDonationDate && (
-                <p className="error">{errors.lastDonationDate}</p>
+              {errors.lastDonation && (
+                <p className="error">{errors.lastDonation}</p>
               )}
               {donor.lastDonationDate && (
                 <p className="info-text">
@@ -422,8 +576,8 @@ const DonorForm = () => {
                 type="radio"
                 id="addressMethod"
                 name="locationMethod"
-                checked={locationMethod === 'address'}
-                onChange={() => setLocationMethod('address')}
+                checked={donor.locationMethod === 'address'}
+                onChange={() => setDonor(prev => ({ ...prev, locationMethod: 'address' }))}
               />
               <label htmlFor="addressMethod">Address</label>
               
@@ -431,15 +585,15 @@ const DonorForm = () => {
                 type="radio"
                 id="gpsMethod"
                 name="locationMethod"
-                checked={locationMethod === 'gps'}
-                onChange={() => setLocationMethod('gps')}
+                checked={donor.locationMethod === 'gps'}
+                onChange={() => setDonor(prev => ({ ...prev, locationMethod: 'gps' }))}
               />
               <label htmlFor="gpsMethod">GPS Location</label>
             </div>
           </div>
 
           {/* Address Fields */}
-          {locationMethod === 'address' && (
+          {donor.locationMethod === 'address' && (
             <>
               <label>Country:</label>
               <select name="country" value={donor.country} onChange={handleChange} required>
@@ -482,29 +636,32 @@ const DonorForm = () => {
           )}
 
           {/* GPS Location */}
-          {locationMethod === 'gps' && (
-            <div className="gps-section">
-              <label>Current Location:</label>
-              <Gps location={donor.location} setLocation={handleLocationChange} />
-              
-              {donor.location.lat && donor.location.lng ? (
-                <>
-                  <div className="location-details">
-                    <p>Coordinates: {donor.location.lat.toFixed(6)}, {donor.location.lng.toFixed(6)}</p>
-                    {donor.location.address && (
-                      <p>Address: {donor.location.address}</p>
-                    )}
-                  </div>
-                  {errors.location && <p className="error">{errors.location}</p>}
-                </>
+          {donor.locationMethod === 'gps' && (
+  <div className="gps-section">
+    <label>Current Location:</label>
+    <Gps 
+                onLocationFound={handleLocationFound}
+                onError={handleLocationError}
+              />
+              {donor.isLocationLoading ? (
+                <p>Loading location...</p>
+              ) : donor.location?.lat ? (
+                <div style={{ marginTop: '10px' }}>
+                  <p>📍 <strong>Coordinates:</strong> {donor.location.lat}, {donor.location.lng}</p>
+                  <p>�� <strong>Address:</strong> {donor.location.address}</p>
+        <p>🌍 <strong>Country:</strong> {donor.country}</p>
+        <p>🏛️ <strong>State:</strong> {donor.state}</p>
+        <p>🏘️ <strong>District:</strong> {donor.district}</p>
+        <p>🛣️ <strong>Street:</strong> {donor.street}</p>
+      </div>
               ) : null}
-            </div>
-          )}
-        </div>
+  </div>
+)}
+</div>
 
         {/* Submit Button */}
-        <button type="submit" className="submit-btn" disabled={Object.keys(errors).length > 0}>
-          Register as Donor
+        <button type="submit" className="submit-btn" disabled={Object.keys(errors).length > 0 || isSubmitting}>
+          {isSubmitting ? 'Processing...' : 'Register as Donor'}
         </button>
       </form>
     </div>

@@ -1,55 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, authorizeAdmin } = require('../middleware/authMiddleware');
+const adminController = require('../controllers/adminController');
 const db = require('../config/db');
 
 // Get all receiver requests
-router.get('/receiver-requests', authenticate, authorizeAdmin, async (req, res) => {
-  try {
-    const [receivers] = await db.execute(`
-      SELECT r.*, u.full_name as user_name, u.phone_number as user_phone
-      FROM receivers r
-      JOIN users u ON r.user_id = u.id
-      ORDER BY r.created_at DESC
-    `);
-
-    res.json({
-      success: true,
-      data: receivers
-    });
-  } catch (error) {
-    console.error('Error fetching receiver requests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching receiver requests',
-      error: error.message
-    });
-  }
-});
+router.get('/receiver-requests', authenticate, authorizeAdmin, adminController.getReceiverRequests);
 
 // Get all donors
-router.get('/donors', authenticate, authorizeAdmin, async (req, res) => {
-  try {
-    const [donors] = await db.execute(`
-      SELECT d.*, u.full_name as user_name, u.phone_number as user_phone
-      FROM donors d
-      JOIN users u ON d.user_id = u.id
-      ORDER BY d.created_at DESC
-    `);
-
-    res.json({
-      success: true,
-      data: donors
-    });
-  } catch (error) {
-    console.error('Error fetching donors:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching donors',
-      error: error.message
-    });
-  }
-});
+router.get('/donors', authenticate, authorizeAdmin, adminController.getDonors);
 
 // Helper function to calculate distance between two points
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -69,8 +28,11 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
   try {
     const { id } = req.params;
     const { status } = req.body;
+    
+    console.log('Updating receiver request status:', { id, status, body: req.body });
 
     if (!['pending', 'approved', 'rejected'].includes(status)) {
+      console.log('Invalid status received:', status);
       return res.status(400).json({
         success: false,
         message: 'Invalid status'
@@ -78,14 +40,18 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
     }
 
     // Get receiver details including location
+    console.log('Fetching receiver details for ID:', id);
     const [receiverDetails] = await db.execute(`
       SELECT r.*, u.full_name, u.phone_number, r.location_lat as latitude, r.location_lng as longitude
       FROM receivers r
-      JOIN users u ON r.user_id = u.id
+      LEFT JOIN users u ON r.user_id = u.id
       WHERE r.id = ?
     `, [id]);
 
+    console.log('Receiver details:', receiverDetails);
+
     if (!receiverDetails.length) {
+      console.log('No receiver found with ID:', id);
       return res.status(404).json({
         success: false,
         message: 'Receiver request not found'
@@ -93,6 +59,7 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
     }
 
     const receiver = receiverDetails[0];
+    console.log('Updating status in database:', { id, status });
 
     await db.execute(
       'UPDATE receivers SET status = ? WHERE id = ?',
@@ -101,6 +68,7 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
 
     let nearbyDonors = [];
     if (status === 'approved') {
+      console.log('Finding nearby donors for blood type:', receiver.blood_type);
       // Find nearby donors with matching blood type
       const [donors] = await db.execute(`
         SELECT 
@@ -117,8 +85,14 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
         AND d.location_lng IS NOT NULL
       `, [receiver.blood_type]);
 
+      console.log('Found donors:', donors);
+
       // Filter donors within 20km
       nearbyDonors = donors.filter(donor => {
+        if (!receiver.latitude || !receiver.longitude) {
+          console.log('Receiver location not available');
+          return false;
+        }
         const distance = calculateDistance(
           receiver.latitude,
           receiver.longitude,
@@ -129,24 +103,28 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
         return distance <= 20;
       });
 
-      // Sort by distance
-      nearbyDonors.sort((a, b) => a.distance - b.distance);
+      console.log('Filtered nearby donors:', nearbyDonors);
     }
 
     // Create notification for the receiver
-    await db.execute(
-      'INSERT INTO notifications (user_id, message) VALUES (?, ?)',
-      [receiver.user_id, `Your blood request has been ${status}`]
-    );
+    if (receiver.user_id) {
+      console.log('Creating notification for user:', receiver.user_id);
+      await db.execute(
+        'INSERT INTO notifications (user_id, message) VALUES (?, ?)',
+        [receiver.user_id, `Your blood request has been ${status}`]
+      );
+    }
 
     // If approved and there are nearby donors, add this information
     if (status === 'approved') {
+      console.log('Updating receiver with nearby donors');
       await db.execute(
         'UPDATE receivers SET nearby_donors = ? WHERE id = ?',
         [JSON.stringify(nearbyDonors), id]
       );
     }
 
+    console.log('Successfully updated request status');
     res.json({
       success: true,
       message: `Request ${status} successfully`,
@@ -156,59 +134,28 @@ router.put('/receiver-requests/:id/status', authenticate, authorizeAdmin, async 
       }
     });
   } catch (error) {
-    console.error('Error updating request status:', error);
+    console.error('Detailed error in status update:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      sqlMessage: error.sqlMessage,
+      sqlState: error.sqlState
+    });
+    
     res.status(500).json({
       success: false,
       message: 'Error updating request status',
-      error: error.message
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        code: error.code,
+        sqlMessage: error.sqlMessage
+      } : undefined
     });
   }
 });
 
 // Update donor status
-router.put('/donors/:id/status', authenticate, authorizeAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!['pending', 'approved', 'rejected'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid status'
-      });
-    }
-
-    await db.execute(
-      'UPDATE donors SET status = ? WHERE id = ?',
-      [status, id]
-    );
-
-    // Create notification for the donor
-    const [donor] = await db.execute(
-      'SELECT user_id FROM donors WHERE id = ?',
-      [id]
-    );
-
-    if (donor.length > 0) {
-      await db.execute(
-        'INSERT INTO notifications (user_id, message) VALUES (?, ?)',
-        [donor[0].user_id, `Your donor application has been ${status}`]
-      );
-    }
-
-    res.json({
-      success: true,
-      message: `Donor ${status} successfully`
-    });
-  } catch (error) {
-    console.error('Error updating donor status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating donor status',
-      error: error.message
-    });
-  }
-});
+router.put('/donors/:id/status', authenticate, authorizeAdmin, adminController.updateDonorStatus);
 
 // Get nearby donors
 router.get('/donors/nearby', authenticate, authorizeAdmin, async (req, res) => {

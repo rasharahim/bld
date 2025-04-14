@@ -37,7 +37,7 @@ const authMiddleware = {
             try {
                 // Verify token
                 const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                console.log('Token decoded successfully:', { userId: decoded.id }); // Debug log
+                console.log('Token decoded successfully:', decoded); // Log full decoded token
                 
                 // Add user info to request
                 req.user = decoded;
@@ -61,19 +61,27 @@ const authMiddleware = {
     },
 
     authorizeAdmin: (req, res, next) => {
+        console.log('Checking admin authorization for user:', req.user);
+        
         if (!req.user) {
+            console.log('No user object found in request');
             return res.status(401).json({ 
                 success: false, 
                 message: 'User not authenticated.' 
             });
         }
         
+        console.log('User admin status:', req.user.is_admin);
+        
         if (!req.user.is_admin) {
+            console.log('User is not an admin:', req.user.email);
             return res.status(403).json({ 
                 success: false, 
                 message: 'Access denied. Admin rights required.' 
             });
         }
+
+        console.log('Admin authorization successful for user:', req.user.email);
         next();
     }
 };

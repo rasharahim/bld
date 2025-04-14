@@ -1,10 +1,10 @@
 const multer = require('multer');
 const path = require('path');
 
-// Configure storage
+// Configure multer for storing profile pictures
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, 'uploads/profile-pictures/');
+        cb(null, 'uploads/profile-pictures');
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -12,14 +12,13 @@ const storage = multer.diskStorage({
     }
 });
 
-// File filter
+// File filter to only allow image files
 const fileFilter = (req, file, cb) => {
-    // Accept images only
-    if (!file.originalname.match(/\.(jpg|JPG|jpeg|JPEG|png|PNG|gif|GIF)$/)) {
-        req.fileValidationError = 'Only image files are allowed!';
-        return cb(new Error('Only image files are allowed!'), false);
+    if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+    } else {
+        cb(new Error('Not an image! Please upload only images.'), false);
     }
-    cb(null, true);
 };
 
 // Export the multer instance
@@ -27,7 +26,7 @@ const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB max-limit
+        fileSize: 5 * 1024 * 1024 // 5MB max file size
     }
 });
 

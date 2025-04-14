@@ -3,6 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs').promises;
 const db = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const protectedRoutes = require('./routes/protectedRoutes');
@@ -31,6 +32,9 @@ app.options('*', cors(corsOptions)); // Enable preflight for all routes
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // 🛠 Registering Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/protected', protectedRoutes);
@@ -40,7 +44,6 @@ app.use('/api/receivers', receiverRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/uploads', express.static(path.join(__dirname, 'config/uploads')));
 
 // 🩸 Accept Blood Request Route (Ensure it's in donorRoutes)
 app.post('/api/donors/accept-request', require('./controllers/DonorStatusController').acceptBloodRequest);
@@ -52,6 +55,17 @@ async function startServer() {
     const connection = await db.getConnection();
     console.log('Connected to database as ID', connection.threadId);
     connection.release();
+
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = path.join(__dirname, 'uploads', 'profile-pictures');
+    try {
+      await fs.mkdir(uploadsDir, { recursive: true });
+      console.log('Uploads directory created/verified');
+    } catch (err) {
+      if (err.code !== 'EEXIST') { // Ignore if directory already exists
+        console.error('Error creating uploads directory:', err);
+      }
+    }
 
     // ✅ Start the server
     const PORT = process.env.PORT || 5000;

@@ -35,7 +35,7 @@ const DonorThankYou = () => {
             <Link to="/donation-centers" className="link-button">
               Nearby Donation Centers
             </Link>
-            <Link to="/donor-status" className="link-button">
+            <Link to={`/donor-status/${donorId}`} className="link-button">
               Check Your Donation Status
             </Link>
           </div>
@@ -50,9 +50,11 @@ const DonorThankYou = () => {
           </div>
         </div>
 
-        <Link to="/" className="return-home">
-          Return to Home Page
-        </Link>
+        <div className="return-home">
+          <Link to="/" className="home-link">
+            ← Return to Home
+          </Link>
+        </div>
       </div>
     </div>
   );

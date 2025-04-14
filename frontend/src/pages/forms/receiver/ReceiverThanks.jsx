@@ -1,13 +1,16 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FaCheckCircle, FaArrowRight } from 'react-icons/fa';
 import '../FormStyles.css';
 
 const ReceiverThanks = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const requestId = queryParams.get('requestId');
 
   const handleCheckStatus = () => {
-    navigate('/request-status'); // Navigate to request status page instead of dashboard
+    navigate(`/request-status/${requestId}`);
   };
 
   return (

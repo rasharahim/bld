@@ -45,6 +45,7 @@ exports.createReceiver = async (req, res) => {
       prescription_path: req.file ? req.file.filename : null
     };
 
+    
     // Validate required fields
     const requiredFields = ['full_name', 'age', 'blood_type', 'contact_number', 'country', 'state', 'district', 'address', 'reason_for_request'];
     const missingFields = requiredFields.filter(field => !receiverData[field]);
@@ -70,10 +71,17 @@ exports.createReceiver = async (req, res) => {
     }
 
     const receiverId = await Receiver.create(receiverData);
+    const [request] = await db.execute(
+      `SELECT * FROM receivers WHERE id = ?`,
+      [receiverId]
+    );
+
     res.status(201).json({
       success: true,
       message: 'Receiver request created successfully',
-      data: { id: receiverId }
+      data:{
+        id: receiverId  // Ensure this matches what frontend expects
+      }
     });
   } catch (error) {
     console.error('Error creating receiver:', error);
@@ -264,41 +272,29 @@ exports.getUserRequests = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    console.log('Fetching requests for user:', userId); // Debug log
-
     const [requests] = await db.execute(
       `SELECT 
         r.*,
         u.full_name,
         u.phone_number,
         r.location_lat as latitude,
-        r.location_lng as longitude
-       FROM receivers r
-       JOIN users u ON r.user_id = u.id
-       WHERE r.user_id = ?
-       ORDER BY r.created_at DESC`,
+        r.location_lng as longitude,
+        d.full_name as donor_name,
+        d.contact_number as donor_contact
+      FROM receivers r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN donors d ON r.selected_donor_id = d.id
+      WHERE r.user_id = ?
+      ORDER BY r.created_at DESC`,
       [userId]
     );
-
-    console.log('Fetched requests:', JSON.stringify(requests, null, 2)); // Debug log with pretty print
-
-    // Check if we have valid coordinates
-    if (requests && requests.length > 0) {
-      const latestRequest = requests[0];
-      console.log('Latest request coordinates:', {
-        latitude: latestRequest.latitude,
-        longitude: latestRequest.longitude
-      });
-    }
 
     res.json({
       success: true,
       requests
     });
-
   } catch (error) {
     console.error('Error in getUserRequests:', error);
-    console.error('Error details:', error.message, error.sql); // Additional error logging
     res.status(500).json({
       success: false,
       message: 'Error fetching requests',

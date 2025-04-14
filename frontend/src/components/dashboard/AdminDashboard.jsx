@@ -1,302 +1,105 @@
-import { useNavigate } from "react-router-dom";
-import React, { useState, useEffect, useCallback } from "react";
-import { FaCheck, FaTimes, FaEye } from "react-icons/fa";
-import "./AdminDashboard.css";
+import React, { useState, useEffect } from 'react';
+import { FaPhone, FaEnvelope, FaMapMarkerAlt, FaTint, FaCalendarAlt, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import api from '@/utils/axios';
+import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("donors");
+  const [activeTab, setActiveTab] = useState('donors');
   const [donors, setDonors] = useState([]);
-  const [receivers, setReceivers] = useState([]);
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [receiverRequests, setReceiverRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(true);
-
-  const checkAdminStatus = useCallback(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setIsAuthenticated(false);
-      return false;
-    }
-
-    try {
-      // Decode the JWT token (just the payload part)
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (!payload.is_admin) {
-        setIsAdmin(false);
-        return false;
-      }
-      return true;
-    } catch (error) {
-      console.error("Error checking admin status:", error);
-      setIsAdmin(false);
-      return false;
-    }
-  }, []);
 
   useEffect(() => {
-    const isAdminUser = checkAdminStatus();
-    if (!isAdminUser) {
-      alert("Access denied. Admin rights required.");
-      navigate("/");
-      return;
-    }
-  }, [checkAdminStatus, navigate]);
-
-  const fetchDashboardData = useCallback(async () => {
-    if (!checkAdminStatus()) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      const token = localStorage.getItem("token");
-      
-      if (!token) {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      };
-
-      if (activeTab === "donors") {
-        const response = await fetch("http://localhost:5000/api/admin/donors", { 
-          headers, 
-          credentials: "include" 
-        });
-        const data = await response.json();
-        console.log("Donors data received:", data);
-        
-        if (!response.ok) {
-          if (response.status === 403) {
-            setIsAdmin(false);
-            throw new Error("Access denied. Admin rights required.");
-          }
-          throw new Error(data.message || 'Failed to fetch donors');
-        }
-        
-        if (!data.success) {
-          throw new Error(data.message || 'Failed to fetch donors');
-        }
-        
-        setDonors(data.data || []);
-      } else {
-        const response = await fetch("http://localhost:5000/api/admin/receiver-requests", { 
-          headers, 
-          credentials: "include" 
-        });
-        const data = await response.json();
-        console.log("Receivers data received:", data);
-        
-        if (!response.ok) {
-          if (response.status === 403) {
-            setIsAdmin(false);
-            throw new Error("Access denied. Admin rights required.");
-          }
-          throw new Error(data.message || 'Failed to fetch receivers');
-        }
-        
-        if (!data.success) {
-          throw new Error(data.message || 'Failed to fetch receivers');
-        }
-        
-        setReceivers(data.data || []);
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      if (error.message.includes('Access denied') || error.message.includes('401')) {
-        setIsAdmin(false);
-      } else {
-        setError(error.message || "Failed to load data");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab, checkAdminStatus]);
-
-  useEffect(() => {
-    console.log("AdminDashboard mounted or activeTab changed:", activeTab);
-    fetchDashboardData();
-  }, [activeTab, fetchDashboardData]);
-
-  useEffect(() => {
-    console.log("Current donors state:", donors);
-    console.log("Current receivers state:", receivers);
-  }, [donors, receivers]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login");
-    } else if (!isAdmin) {
-      navigate("/");
-    }
-  }, [isAuthenticated, isAdmin, navigate]);
-
-  const updateStatus = async (id, status, type) => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      const response = await fetch(
-        `http://localhost:5000/api/admin/${type}/${id}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          credentials: "include",
-          body: JSON.stringify({ status }),
-        }
-      );
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        if (response.status === 403) {
-          setIsAdmin(false);
-          throw new Error("Access denied. Admin rights required.");
-        }
-        throw new Error(data.message || `Failed to update ${type} status`);
-      }
-
-      if (type === 'receiver-requests' && status === 'approved' && data.data.nearbyDonors) {
-        const nearbyDonorsText = data.data.nearbyDonors.length > 0
-          ? `Found ${data.data.nearbyDonors.length} potential donors within 20km:\n\n` +
-            data.data.nearbyDonors.map(donor => 
-              `${donor.donor_name} (${donor.blood_type}) - ${donor.distance}km away`
-            ).join('\n')
-          : 'No matching donors found within 20km.';
-        
-        alert(`Request approved successfully!\n\n${nearbyDonorsText}`);
-      } else {
-        alert(`${type === 'donors' ? 'Donor' : 'Request'} ${status} successfully`);
-      }
-
-      fetchDashboardData();
-      setSelectedItem(null);
-    } catch (error) {
-      console.error(`Error updating ${type} status:`, error);
-      if (error.message.includes('401')) {
-        setIsAuthenticated(false);
-      } else {
-        alert(`Error updating status: ${error.message}`);
-      }
-    }
-  };
-
-  const viewPrescription = (prescriptionPath) => {
-    if (prescriptionPath) {
-      window.open(`http://localhost:5000/uploads/prescriptions/${prescriptionPath}`, '_blank');
+    if (activeTab === 'donors') {
+      fetchDonors();
     } else {
-      alert('No prescription uploaded');
+      fetchReceiverRequests();
+    }
+  }, [activeTab]);
+
+  const fetchDonors = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/api/admin/donors');
+      console.log('Donors data received:', response.data);
+      if (response.data.success && Array.isArray(response.data.data)) {
+        setDonors(response.data.data);
+      } else {
+        setError('Invalid data format received from server');
+      }
+    } catch (err) {
+      setError('Failed to fetch donors. Please try again later.');
+      console.error('Error fetching donors:', err);
+    }
+    setLoading(false);
+  };
+
+  const fetchReceiverRequests = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/api/admin/receiver-requests');
+      if (response.data.success && Array.isArray(response.data.data)) {
+        setReceiverRequests(response.data.data);
+      } else {
+        setError('Invalid data format received from server');
+      }
+    } catch (err) {
+      setError('Failed to fetch receiver requests. Please try again later.');
+      console.error('Error fetching receiver requests:', err);
+    }
+    setLoading(false);
+  };
+
+  const handleDonorStatusUpdate = async (donorId, newStatus) => {
+    try {
+      await api.put(`/api/admin/donors/${donorId}/status`, { status: newStatus });
+      fetchDonors();
+      alert(`Donor ${newStatus} successfully`);
+    } catch (err) {
+      console.error('Error updating donor status:', err);
+      alert('Failed to update donor status. Please try again.');
     }
   };
 
-  const renderDonorDetails = (donor, key) => (
-    <div key={key} className="details-card">
-      <h3>{donor.user_name}</h3>
-      <div className="status-badge" data-status={donor.status.toLowerCase()}>{donor.status}</div>
-      <div className="details-content">
-        <p><strong>Blood Type:</strong> {donor.blood_type}</p>
-        <p><strong>Age:</strong> {donor.age}</p>
-        <p><strong>Contact:</strong> {donor.user_phone}</p>
-        <p><strong>Location:</strong> {donor.address}</p>
-        <p><strong>Last Donation:</strong> {donor.last_donation || 'Never'}</p>
-        <p><strong>Health Status:</strong> {donor.health_conditions || 'Healthy'}</p>
-        
-        {donor.status === "pending" && (
-          <div className="action-buttons">
-            <button 
-              className="approve-btn"
-              onClick={() => updateStatus(donor.id, "approved", "donors")}
-            >
-              <FaCheck /> Approve
-            </button>
-            <button 
-              className="reject-btn"
-              onClick={() => updateStatus(donor.id, "rejected", "donors")}
-            >
-              <FaTimes /> Reject
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const handleRequestStatusUpdate = async (requestId, newStatus) => {
+    try {
+      await api.put(`/api/admin/receiver-requests/${requestId}/status`, { status: newStatus });
+      fetchReceiverRequests();
+      alert(`Request ${newStatus} successfully`);
+    } catch (err) {
+      console.error('Error updating request status:', err);
+      alert('Failed to update request status. Please try again.');
+    }
+  };
 
-  const renderReceiverDetails = (receiver, key) => (
-    <div key={key} className="details-card">
-      <h3>{receiver.user_name}</h3>
-      <div className="status-badge" data-status={receiver.status.toLowerCase()}>{receiver.status}</div>
-      <div className="details-content">
-        <p><strong>Blood Type:</strong> {receiver.blood_type}</p>
-        <p><strong>Age:</strong> {receiver.age}</p>
-        <p><strong>Contact:</strong> {receiver.user_phone}</p>
-        <p><strong>Location:</strong> {receiver.address}</p>
-        <p><strong>Reason:</strong> {receiver.reason}</p>
-        
-        {receiver.prescription_path && (
-          <button 
-            className="view-btn"
-            onClick={() => viewPrescription(receiver.prescription_path)}
-          >
-            <FaEye /> View Prescription
-          </button>
-        )}
-        
-        {receiver.status === "pending" && (
-          <div className="action-buttons">
-            <button 
-              className="approve-btn"
-              onClick={() => updateStatus(receiver.id, "approved", "receiver-requests")}
-            >
-              <FaCheck /> Approve
-            </button>
-            <button 
-              className="reject-btn"
-              onClick={() => updateStatus(receiver.id, "rejected", "receiver-requests")}
-            >
-              <FaTimes /> Reject
-            </button>
-          </div>
-        )}
+  const viewPrescription = (prescriptionUrl) => {
+    if (prescriptionUrl) {
+      window.open(prescriptionUrl, '_blank');
+    }
+  };
 
-        {receiver.status === "approved" && receiver.nearby_donors && (
-          <div className="donor-matches">
-            <h4>Nearby Donors</h4>
-            {JSON.parse(receiver.nearby_donors).length > 0 ? (
-              <div className="donor-list">
-                {JSON.parse(receiver.nearby_donors).map((donor, index) => (
-                  <div key={index} className="donor-item">
-                    <p><strong>Name:</strong> {donor.donor_name}</p>
-                    <p><strong>Blood Type:</strong> {donor.blood_type}</p>
-                    <p><strong>Distance:</strong> {donor.distance}km</p>
-                    <p><strong>Contact:</strong> {donor.donor_phone}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No matching donors found within 20km</p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (!isAuthenticated || !isAdmin) {
-    return null;
+  if (loading) {
+    return <div className="loading">Loading...</div>;
   }
+
+  if (error) {
+    return <div className="error">{error}</div>;
+  }
+
+  const formatCoordinates = (lat, lng) => {
+    if (!lat || !lng) return null;
+    try {
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lng);
+      if (isNaN(latitude) || isNaN(longitude)) return null;
+      return `(${latitude.toFixed(6)}, ${longitude.toFixed(6)})`;
+    } catch (err) {
+      return null;
+    }
+  };
 
   return (
     <div className="admin-dashboard">
@@ -304,49 +107,162 @@ const AdminDashboard = () => {
         <h2>Admin Dashboard</h2>
         <div className="tab-buttons">
           <button 
-            className={activeTab === "donors" ? "active" : ""}
-            onClick={() => setActiveTab("donors")}
-            disabled={loading}
+            className={`tab-button ${activeTab === 'donors' ? 'active' : ''}`}
+            onClick={() => setActiveTab('donors')}
           >
-            Donor Applications
+            Donor Management
           </button>
           <button 
-            className={activeTab === "receivers" ? "active" : ""}
-            onClick={() => setActiveTab("receivers")}
-            disabled={loading}
+            className={`tab-button ${activeTab === 'requests' ? 'active' : ''}`}
+            onClick={() => setActiveTab('requests')}
           >
-            Blood Requests
+            Blood Request Management
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="error-message">
-          {error}
-          <button onClick={fetchDashboardData}>Try Again</button>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="loading">Loading...</div>
-      ) : (
-        <div className="dashboard-content">
-          {activeTab === "donors" ? (
-            <div className="cards-grid">
-              {donors.length === 0 ? (
-                <div className="no-data">No donor applications found</div>
-              ) : (
-                donors.map(donor => renderDonorDetails(donor, donor.id))
-              )}
-            </div>
+      {activeTab === 'donors' ? (
+        <div className="donors-container">
+          {donors.length === 0 ? (
+            <div className="no-data">No donor applications found</div>
           ) : (
-            <div className="cards-grid">
-              {receivers.length === 0 ? (
-                <div className="no-data">No blood requests found</div>
-              ) : (
-                receivers.map(receiver => renderReceiverDetails(receiver, receiver.id))
-              )}
-            </div>
+            donors.map(donor => (
+              <div key={donor.id} className="details-card">
+                <div className="donor-header">
+                  <h3>{donor.full_name}</h3>
+                  <span className={`status-badge ${donor.donor_status}`}>
+                    {donor.donor_status || 'pending'}
+                  </span>
+                </div>
+                <div className="details-content">
+                  <div className="info-row">
+                    <FaTint className="icon" />
+                    <div>
+                      <strong>Blood Type:</strong>
+                      <span>{donor.blood_type || 'Not specified'}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaPhone className="icon" />
+                    <div>
+                      <strong>Phone:</strong>
+                      <span>{donor.phone_number || 'Not specified'}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaEnvelope className="icon" />
+                    <div>
+                      <strong>Email:</strong>
+                      <span>{donor.email || 'Not specified'}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaCalendarAlt className="icon" />
+                    <div>
+                      <strong>Age:</strong>
+                      <span>{donor.age ? `${donor.age} years` : 'Not specified'}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaMapMarkerAlt className="icon" />
+                    <div>
+                      <strong>Location:</strong>
+                      <span>{donor.address || 'No location information available'}</span>
+                      {donor.location_lat && donor.location_lng && (
+                        <span className="coordinates">
+                          {formatCoordinates(donor.location_lat, donor.location_lng)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {donor.donor_status === 'pending' && (
+                  <div className="action-buttons">
+                    <button
+                      className="approve-btn"
+                      onClick={() => handleDonorStatusUpdate(donor.id, 'approved')}
+                    >
+                      <FaCheckCircle /> Approve
+                    </button>
+                    <button
+                      className="reject-btn"
+                      onClick={() => handleDonorStatusUpdate(donor.id, 'rejected')}
+                    >
+                      <FaTimesCircle /> Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="requests-container">
+          {receiverRequests.length === 0 ? (
+            <div className="no-data">No blood requests found</div>
+          ) : (
+            receiverRequests.map(request => (
+              <div key={request.id} className="details-card">
+                <div className="request-header">
+                  <h3>{request.user_name}</h3>
+                  <span className={`status-badge ${request.status}`}>
+                    {request.status}
+                  </span>
+                </div>
+                <div className="details-content">
+                  <div className="info-row">
+                    <FaTint className="icon" />
+                    <div>
+                      <strong>Blood Type:</strong>
+                      <span>{request.blood_type}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaPhone className="icon" />
+                    <div>
+                      <strong>Contact:</strong>
+                      <span>{request.user_phone}</span>
+                    </div>
+                  </div>
+                  <div className="info-row">
+                    <FaMapMarkerAlt className="icon" />
+                    <div>
+                      <strong>Location:</strong>
+                      <span>{request.address || 'No location information available'}</span>
+                      {request.location_lat && request.location_lng && (
+                        <span className="coordinates">
+                          {formatCoordinates(request.location_lat, request.location_lng)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {request.status === 'pending' && (
+                  <div className="action-buttons">
+                    <button
+                      className="approve-btn"
+                      onClick={() => handleRequestStatusUpdate(request.id, 'approved')}
+                    >
+                      <FaCheckCircle /> Approve
+                    </button>
+                    <button
+                      className="reject-btn"
+                      onClick={() => handleRequestStatusUpdate(request.id, 'rejected')}
+                    >
+                      <FaTimesCircle /> Reject
+                    </button>
+                  </div>
+                )}
+                {request.status === 'approved' && request.selected_donor && (
+                  <div className="donor-match">
+                    <h4>Selected Donor</h4>
+                    <p><strong>Name:</strong> {request.selected_donor.name}</p>
+                    <p><strong>Contact:</strong> {request.selected_donor.contact}</p>
+                    <p><strong>Status:</strong> {request.donation_status || 'Pending'}</p>
+                  </div>
+                )}
+              </div>
+            ))
           )}
         </div>
       )}

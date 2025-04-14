@@ -128,6 +128,11 @@ exports.login = async (req, res) => {
     }
 
     const user = users[0];
+    console.log('User found:', { 
+      id: user.id, 
+      email: user.email, 
+      is_admin: user.is_admin 
+    });
 
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -136,31 +141,40 @@ exports.login = async (req, res) => {
         success: false,
         message: 'Invalid email or password'
       });
-      }
+    }
 
-      // Generate JWT token
-      const token = jwt.sign(
+    // Generate JWT token
+    const token = jwt.sign(
       { 
         id: user.id, 
         email: user.email, 
-        is_admin: user.is_admin 
+        is_admin: Boolean(user.is_admin) // Ensure boolean conversion
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
+    console.log('Generated token payload:', {
+      id: user.id,
+      email: user.email,
+      is_admin: Boolean(user.is_admin)
+    });
+
     // Remove password from user object
     delete user.password;
 
-      res.json({ 
+    res.json({ 
       success: true,
       message: 'Login successful',
-        token,
-      user
-      });
+      token,
+      user: {
+        ...user,
+        is_admin: Boolean(user.is_admin) // Ensure boolean conversion in response
+      }
+    });
 
-    } catch (error) {
-      console.error('Login error:', error);
+  } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Login failed',
@@ -193,6 +207,64 @@ exports.getProfile = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get profile',
+      error: error.message
+    });
+  }
+};
+
+exports.makeAdmin = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Update user to admin
+    const [result] = await db.execute(
+      'UPDATE users SET is_admin = 1 WHERE email = ?',
+      [email]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Get updated user info
+    const [users] = await db.execute(
+      'SELECT id, full_name, email, is_admin FROM users WHERE email = ?',
+      [email]
+    );
+
+    // Generate new token with admin privileges
+    const token = jwt.sign(
+      { 
+        id: users[0].id, 
+        email: users[0].email, 
+        is_admin: true 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      success: true,
+      message: 'User is now an admin',
+      token,
+      user: users[0]
+    });
+
+  } catch (error) {
+    console.error('Make admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to make user admin',
       error: error.message
     });
   }
