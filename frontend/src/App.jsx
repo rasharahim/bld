@@ -1,75 +1,98 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import Navbar from './components/Navbar';
 import Dashboard from './components/dashboard/Dashboard';
-import Login from './pages/login/Login';
-import Register from './pages/register/Register';
-import Home from './pages/home/Home';
-import Info from './pages/info/Info';
-import ForgotPassword from './pages/forgotpassword/ForgotPassword';
-//import Donate from './pages/donate/Donate';
-//import RequestBlood from './pages/requestblood/RequestBlood';
-import Profile from "./pages/profile/Profile"; 
-import DonorForm from './pages/forms/donor/DonorForm';       
-import ReceiverForm from "./pages/forms/receiver/ReceiverForm"; 
-import ReceiverThanks from "./pages/forms/receiver/ReceiverThanks";
-import RequestStatus from "./pages/forms/receiver/RequestStatus";
-import DonorStatusPage from './pages/forms/donor/DonorStatus';
-import DonorThanks from "./pages/forms/donor/DonorThanks";
-import { lazy } from 'react';
-import ProfilePage from './pages/profile/Profile';
-const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard')); // Lazy load AdminDashboard
+import Home from './pages/Home';
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import ReceiverForm from './pages/forms/receiver/ReceiverForm';
+import ReceiverThanks from './pages/forms/receiver/ReceiverThanks';
+import ReceiverStatus from './pages/status/ReceiverStatus';
+import DonorForm from './pages/forms/donor/DonorForm';
+import DonorThanks from './pages/forms/donor/DonorThanks';
+import DonorStatus from './pages/status/DonorStatus';
+import Profile from './pages/Profile';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import PrivateRoute from './components/PrivateRoute';
+import { AuthProvider } from './context/AuthContext';
+import './App.css';
 
-const App = () => {
-  const location = useLocation();
-
-  // Define routes where the Dashboard should NOT be displayed
-  const excludeDashboardRoutes = ['/login', '/register', '/', '/admin-dashboard'];
-
-  // Check if the current route is in the exclude list
-  const shouldShowDashboard = !excludeDashboardRoutes.includes(location.pathname);
-
+function App() {
   return (
-    <>
-      {/* Conditionally render the Dashboard */}
-      {shouldShowDashboard && <Dashboard />}
+    <AuthProvider>
+      <div className="app">
+        <Navbar />
+        <main className="main-content">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            
+            {/* Profile Routes */}
+            <Route path="/profile" element={
+              <PrivateRoute>
+                <Profile />
+              </PrivateRoute>
+            } />
 
-      {/* Routes */}
-      <Routes>
-        {/* Auth Routes */}
-        <Route path="/" element={<Login />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
+            {/* Receiver Routes */}
+            <Route path="/receiver/request" element={
+              <PrivateRoute>
+                <ReceiverForm />
+              </PrivateRoute>
+            } />
+            <Route path="/receiver/thanks" element={
+              <PrivateRoute>
+                <ReceiverThanks />
+              </PrivateRoute>
+            } />
+            <Route path="/receiver/status" element={
+              <PrivateRoute>
+                <ReceiverStatus />
+              </PrivateRoute>
+            } />
+            <Route path="/receiver/status/:requestId" element={
+              <PrivateRoute>
+                <ReceiverStatus />
+              </PrivateRoute>
+            } />
 
-        {/* Main Routes */}
-        <Route path="/dashboard" element={<Home />} />
-        <Route path="/home" element={<Home />} />
-        <Route path="/info" element={<Info />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        
-        {/* Donor Routes */}
-        <Route path="/donor-form" element={<DonorForm />} />
-        <Route path="/donor-thanks" element={<DonorThanks />} />
-        <Route path="/donor-status/:donorId" element={<DonorStatusPage />} />
-        
-        {/* Receiver Routes */}
-        <Route path="/receiver-form" element={<ReceiverForm />} />
-        <Route path="/receiver-thanks" element={<ReceiverThanks />} />
-        <Route path="/receiver/request-status" element={<RequestStatus />} />
-        <Route path="/request-status/:requestId" element={<RequestStatus />} />
+            {/* Donor Routes */}
+            <Route path="/donor/register" element={
+              <PrivateRoute>
+                <DonorForm />
+              </PrivateRoute>
+            } />
+            <Route path="/donor/thanks" element={
+              <PrivateRoute>
+                <DonorThanks />
+              </PrivateRoute>
+            } />
+            <Route path="/donor/status" element={
+              <PrivateRoute>
+                <DonorStatus />
+              </PrivateRoute>
+            } />
+            <Route path="/donor/status/:donorId" element={
+              <PrivateRoute>
+                <DonorStatus />
+              </PrivateRoute>
+            } />
 
-        {/* Admin Routes */}
-        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-      </Routes>
-    </>
+            {/* Admin Routes */}
+            <Route path="/admin/dashboard" element={
+              <PrivateRoute requireAdmin={true}>
+                <AdminDashboard />
+              </PrivateRoute>
+            } />
+
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </AuthProvider>
   );
-};
+}
 
-// Wrap the App component with Router
-const AppWrapper = () => (
-  <Router>
-    <App />
-  </Router>
-);
-
-export default AppWrapper;
+export default App;

@@ -1,116 +1,71 @@
 require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
+const morgan = require('morgan');
 const path = require('path');
-const fs = require('fs').promises;
-const db = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
-const protectedRoutes = require('./routes/protectedRoutes');
-const donorRoutes = require('./routes/donorRoutes');
-const donorStatusRoutes = require('./routes/donorStatusRoutes'); 
-const donorController = require("./controllers/donorController");
-const receiverRoutes = require('./routes/receiverRoutes');
-const profileRoutes = require('./routes/profileRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Enhanced CORS configuration
-const corsOptions = {
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://localhost:5174'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true,
-  optionsSuccessStatus: 200 // For legacy browser support
-};
+// Import routes
+const authRoutes = require('./routes/authRoutes');
+const donorRoutes = require('./routes/donorRoutes');
+const receiverRoutes = require('./routes/receiverRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Middleware
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Enable preflight for all routes
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174'
+  ],
+  credentials: true
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
 
-// Serve static files
+// Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 🛠 Registering Routes
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  try {
+    const db = require('./config/db');
+    await db.execute('SELECT 1');
+    res.json({ 
+      status: 'Server is running',
+      database: 'Connected'
+    });
+  } catch (error) {
+    console.error('Database connection error:', error);
+    res.status(500).json({ 
+      status: 'Server is running',
+      database: 'Error',
+      error: error.message
+    });
+  }
+});
+
+// Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/protected', protectedRoutes);
 app.use('/api/donors', donorRoutes);
-app.use('/api/donor-status', donorStatusRoutes);
 app.use('/api/receivers', receiverRoutes);
-app.use('/api/profile', profileRoutes);
-app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
-// 🩸 Accept Blood Request Route (Ensure it's in donorRoutes)
-app.post('/api/donors/accept-request', require('./controllers/DonorStatusController').acceptBloodRequest);
-app.post("/api/donors/createDonor", donorController.createDonor);
-
-// ✅ Test DB connection
-async function startServer() {
-  try {
-    const connection = await db.getConnection();
-    console.log('Connected to database as ID', connection.threadId);
-    connection.release();
-
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(__dirname, 'uploads', 'profile-pictures');
-    try {
-      await fs.mkdir(uploadsDir, { recursive: true });
-      console.log('Uploads directory created/verified');
-    } catch (err) {
-      if (err.code !== 'EEXIST') { // Ignore if directory already exists
-        console.error('Error creating uploads directory:', err);
-      }
-    }
-
-    // ✅ Start the server
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`CORS configured for: ${corsOptions.origin}`);
-    });
-  } catch (err) {
-    console.error('Database connection failed:', err.stack);
-    process.exit(1);
-  }
-}
-
-// ✅ Health Check Endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// ❌ Error handling middleware
+// Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', {
-    message: err.message,
-    stack: process.env.NODE_ENV === 'production' ? '🔒' : err.stack,
-    path: req.path,
-    method: req.method
-  });
-
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Something went wrong!' 
-      : err.message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: 'Something broke!',
+    error: err.message
   });
 });
 
-// ❌ 404 Handler (should be last route)
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    path: req.originalUrl
-  });
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
-
-// Start the server
-startServer();

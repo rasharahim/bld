@@ -103,83 +103,96 @@ exports.register = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
+  console.log('=== Starting login request ===');
+  console.log('Request body:', req.body);
+  
   try {
     const { email, password } = req.body;
 
     // Validate input
     if (!email || !password) {
+      console.log('Missing email or password');
       return res.status(400).json({
         success: false,
         message: 'Email and password are required'
       });
     }
 
-    // Get user by email
+    // Find user by email
+    console.log('Searching for user with email:', email);
     const [users] = await db.execute(
       'SELECT * FROM users WHERE email = ?',
       [email]
     );
+    console.log('User query result:', users);
 
     if (users.length === 0) {
+      console.log('User not found');
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials'
       });
     }
 
     const user = users[0];
-    console.log('User found:', { 
-      id: user.id, 
-      email: user.email, 
-      is_admin: user.is_admin 
-    });
+    console.log('Found user:', { id: user.id, email: user.email });
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
+    // Verify password
+    console.log('Verifying password');
+    const isMatch = await bcrypt.compare(password, user.password);
+    console.log('Password match:', isMatch);
+
+    if (!isMatch) {
+      console.log('Password mismatch');
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials'
       });
     }
 
     // Generate JWT token
+    console.log('Generating JWT token');
     const token = jwt.sign(
       { 
         id: user.id, 
         email: user.email, 
-        is_admin: Boolean(user.is_admin) // Ensure boolean conversion
+        is_admin: user.is_admin 
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    console.log('Generated token payload:', {
-      id: user.id,
-      email: user.email,
-      is_admin: Boolean(user.is_admin)
-    });
-
-    // Remove password from user object
-    delete user.password;
-
-    res.json({ 
+    console.log('Login successful');
+    res.status(200).json({
       success: true,
       message: 'Login successful',
       token,
       user: {
-        ...user,
-        is_admin: Boolean(user.is_admin) // Ensure boolean conversion in response
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        phone_number: user.phone_number,
+        is_admin: user.is_admin
       }
     });
-
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('=== Login error ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    if (error.sql) {
+      console.error('SQL Error:', {
+        sql: error.sql,
+        sqlMessage: error.sqlMessage,
+        sqlState: error.sqlState
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Login failed',
       error: error.message
     });
+  } finally {
+    console.log('=== End of login request ===');
   }
 };
 

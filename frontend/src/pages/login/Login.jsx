@@ -32,8 +32,10 @@ const Login = () => {
         throw new Error(data.message || 'Login failed');
       }
   
-      // Store token
+      // Store token, user ID, and email
       auth.setToken(data.token);
+      localStorage.setItem('userId', data.user.id);
+      localStorage.setItem('email', data.user.email);
       
       // Navigate based on user type
       if (data.user.is_admin) {

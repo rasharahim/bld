@@ -2,6 +2,7 @@ const express = require('express');
 const path = require("path");
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const db = require('./config/db');
 
 const authRoutes = require('./routes/authRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
@@ -27,6 +28,16 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Serve static files (Profile pictures, uploads, etc.)
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
+// Test database connection
+db.getConnection()
+  .then(connection => {
+    console.log('Database connected successfully');
+    connection.release();
+  })
+  .catch(err => {
+    console.error('Error connecting to the database:', err);
+  });
+
 // Routes
 app.use('/api/auth', authRoutes); // Authentication routes
 app.use('/api/notifications', notificationRoutes); // Notifications route
@@ -41,7 +52,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ 
     success: false,
     message: 'Internal Server Error',
-    error: err.message 
+    error: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 

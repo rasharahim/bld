@@ -1,291 +1,341 @@
 const express = require('express');
 const router = express.Router();
-const donorController = require('../controllers/donorController');
-//const donorStatusController = require('../controllers/donorStatusController'); // Fix import
-const authMiddleware = require('../middlewares/authMiddleware');
-const donorStatusController = require('../controllers/DonorStatusController');
+const { authenticateToken, isAdmin } = require('../middleware/auth');
 const db = require('../config/db');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-console.log("authMiddleware:", authMiddleware);
-console.log("authMiddleware.authenticate type:", typeof authMiddleware.authenticate);
-console.log("authMiddleware.authorizeAdmin type:", typeof authMiddleware.authorizeAdmin);
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images and PDFs are allowed'));
+    }
+  }
+});
 
-
-// ✅ Log `authMiddleware` before using it
-//console.log("authMiddleware:", authMiddleware);
-//console.log("authMiddleware.authenticate type:", typeof authMiddleware.authenticate);
-//console.log("authMiddleware.authorizeAdmin type:", typeof authMiddleware.authorizeAdmin);
-
-//console.log("donorStatusController:", donorStatusController);
-// ✅ Import correctly from donorStatusController
-const { acceptBloodRequest } = donorStatusController;
-
-
-// ✅ Log functions from donorStatusController
-
-//console.log("acceptBloodRequest:", acceptBloodRequest);
-//console.log("typeof acceptBloodRequest:", typeof acceptBloodRequest);
-
-// ✅ Use only one definition for createDonor
-router.post('/createDonor', authMiddleware.authenticate, donorController.createDonor);
-router.get('/', authMiddleware.authenticate, donorController.getDonor); // Get single donor
-
-// Get donor status by user ID
-router.get('/user/:userId/status', authMiddleware.authenticate, async (req, res) => {
+// Get donor profile
+router.get('/profile', authenticateToken, async (req, res) => {
+  console.log('Fetching donor profile for user:', req.user.id);
+  
   try {
-    const [rows] = await db.execute(
-      `SELECT 
-        d.status,
-        d.id as donor_id,
-        d.user_id,
-        u.full_name,
-        u.blood_type,
-        d.created_at,
-        d.last_donation_date,
-        d.donation_gap_months
-      FROM donors d
-      INNER JOIN users u ON d.user_id = u.id
-      WHERE d.user_id = ?`,
-      [req.params.userId]
+    // First check if user exists
+    const [userRows] = await db.execute(
+      'SELECT id, email FROM users WHERE id = ?',
+      [req.user.id]
     );
 
-    if (rows.length === 0) {
+    if (userRows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Donor not found'
+        message: 'User not found'
       });
     }
 
-    // Check if the authenticated user is the donor or an admin
-    if (req.user.id !== parseInt(req.params.userId) && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized to view this donor status'
+    // Then check if user is registered as a donor
+    const [donorRows] = await db.execute(
+      `SELECT d.*, 
+              CASE 
+                WHEN d.status = 'pending' THEN 'Pending Approval'
+                WHEN d.status = 'active' THEN 'Active Donor'
+                WHEN d.status = 'rejected' THEN 'Registration Rejected'
+                WHEN d.status = 'inactive' THEN 'Account Inactive'
+              END as display_status,
+              CASE 
+                WHEN d.status = 'pending' THEN 'Your registration is pending approval from the admin. Please wait for confirmation.'
+                WHEN d.status = 'active' THEN 'Your registration has been approved. You can now receive and respond to donation requests.'
+                WHEN d.status = 'rejected' THEN 'Your registration has been rejected. Please contact support for more information.'
+                WHEN d.status = 'inactive' THEN 'Your account is currently inactive. Please contact support to reactivate.'
+              END as status_message
+       FROM donors d
+       WHERE d.user_id = ?`,
+      [req.user.id]
+    );
+
+    if (donorRows.length === 0) {
+      return res.status(200).json({
+        success: true,
+        isRegistered: false,
+        message: 'User is not registered as a donor',
+        user: {
+          id: userRows[0].id,
+          email: userRows[0].email
+        }
       });
     }
 
-    res.json({
+    const donor = donorRows[0];
+    return res.status(200).json({
       success: true,
-      status: rows[0].status,
-      donor: {
-        id: rows[0].donor_id,
-        fullName: rows[0].full_name,
-        bloodType: rows[0].blood_type,
-        registeredDate: rows[0].created_at,
-        lastDonationDate: rows[0].last_donation_date,
-        donationGapMonths: rows[0].donation_gap_months
+      isRegistered: true,
+      data: {
+        id: donor.id,
+        userId: donor.user_id,
+        fullName: donor.full_name,
+        bloodType: donor.blood_type,
+        status: donor.status,
+        displayStatus: donor.display_status,
+        statusMessage: donor.status_message,
+        contactNumber: donor.contact_number,
+        address: donor.address,
+        district: donor.district,
+        state: donor.state,
+        country: donor.country,
+        lastDonationDate: donor.last_donation_date,
+        donationGapMonths: donor.donation_gap_months,
+        totalDonations: donor.total_donations || 0
       }
     });
   } catch (error) {
-    console.error('Error fetching donor status:', error);
-    res.status(500).json({
+    console.error('Error fetching donor profile:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Failed to fetch donor status',
-      error: error.message
+      error: 'Failed to fetch donor profile',
+      details: error.message
     });
   }
 });
 
-// Get donor status by donor ID
-router.get('/:donorId/status', authMiddleware.authenticate, async (req, res) => {
+// Create donor
+router.post('/createDonor', authenticateToken, async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      `SELECT 
-        d.status,
-        d.id as donor_id,
-        d.user_id,
-        u.full_name,
-        u.blood_type,
-        d.created_at,
-        d.last_donation_date,
-        d.donation_gap_months
-      FROM donors d
-      INNER JOIN users u ON d.user_id = u.id
-      WHERE d.id = ?`,
-      [req.params.donorId]
-    );
+    const {
+      full_name,
+      date_of_birth,
+      blood_type,
+      weight,
+      contact_number,
+      availability_time,
+      health_condition,
+      last_donation_date,
+      donation_gap_months,
+      country,
+      state,
+      district,
+      address,
+      location_lat,
+      location_lng,
+      location_address
+    } = req.body;
 
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Donor not found'
-      });
-    }
+    // Validate required fields
+    const requiredFields = [
+      'full_name', 'date_of_birth', 'blood_type', 'weight',
+      'contact_number', 'availability_time', 'country',
+      'state', 'district', 'address'
+    ];
 
-    // Check if the authenticated user is the donor or an admin
-    if (req.user.id !== rows[0].user_id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized to view this donor status'
-      });
-    }
-
-    res.json({
-      success: true,
-      status: rows[0].status,
-      donor: {
-        id: rows[0].donor_id,
-        fullName: rows[0].full_name,
-        bloodType: rows[0].blood_type,
-        registeredDate: rows[0].created_at,
-        lastDonationDate: rows[0].last_donation_date,
-        donationGapMonths: rows[0].donation_gap_months
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching donor status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch donor status',
-      error: error.message
-    });
-  }
-});
-
-// Get nearby blood requests for a specific donor
-router.get('/:donorId/blood-requests', authMiddleware.authenticate, async (req, res) => {
-  try {
-    // First get the donor's location and blood type
-    const [donor] = await db.execute(
-      `SELECT u.location_lat, u.location_lng, u.blood_type, d.status, d.user_id
-       FROM users u
-       INNER JOIN donors d ON u.id = d.user_id
-       WHERE d.id = ?`,
-      [req.params.donorId]
-    );
-
-    if (!donor.length || donor[0].status !== 'approved') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only approved donors can view blood requests'
-      });
-    }
-
-    // Check if the authenticated user is the donor or an admin
-    if (req.user.id !== donor[0].user_id && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized to view these blood requests'
-      });
-    }
-
-    const donorLocation = {
-      lat: donor[0].location_lat,
-      lng: donor[0].location_lng
-    };
-
-    if (!donorLocation.lat || !donorLocation.lng) {
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    if (missingFields.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Donor location not available'
+        message: 'Missing required fields',
+        missingFields
       });
     }
 
-    // Get nearby requests using Haversine formula
-    const [requests] = await db.execute(`
-      SELECT 
-        r.id,
-        u.full_name as user_name,
-        r.blood_type,
-        r.location_lat,
-        r.location_lng,
-        r.address,
-        r.urgency,
-        r.additional_notes,
-        (
-          6371 * acos(
-            cos(radians(?)) * cos(radians(r.location_lat)) *
-            cos(radians(r.location_lng) - radians(?)) +
-            sin(radians(?)) * sin(radians(r.location_lat))
-          )
-        ) AS distance
-      FROM receivers r
-      INNER JOIN users u ON r.user_id = u.id
-      WHERE r.status = 'approved'
-        AND r.blood_type = ?
-        AND r.location_lat IS NOT NULL 
-        AND r.location_lng IS NOT NULL
-        AND r.selected_donor_id IS NULL
-      HAVING distance <= 20
-      ORDER BY distance
-    `, [donorLocation.lat, donorLocation.lng, donorLocation.lat, donor[0].blood_type]);
+    // Insert into database with status 'pending'
+    const sql = `INSERT INTO donors (
+      user_id, full_name, date_of_birth, blood_type, weight,
+      contact_number, availability_time, health_condition,
+      last_donation_date, donation_gap_months, country,
+      state, district, address, location_lat, location_lng,
+      location_address, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    res.json({
+    const values = [
+      req.user.id,
+      full_name,
+      date_of_birth,
+      blood_type,
+      parseFloat(weight),
+      contact_number,
+      availability_time,
+      health_condition || null,
+      last_donation_date || null,
+      parseInt(donation_gap_months) || 0,
+      country,
+      state,
+      district,
+      address,
+      location_lat ? parseFloat(location_lat) : null,
+      location_lng ? parseFloat(location_lng) : null,
+      location_address || null,
+      'pending'  // Explicitly set status as pending
+    ];
+
+    const [result] = await db.execute(sql, values);
+
+    // Update user's blood type
+    await db.execute(
+      'UPDATE users SET blood_type = ? WHERE id = ?',
+      [blood_type, req.user.id]
+    );
+
+    // Fetch the created donor to get complete data
+    const [newDonor] = await db.execute(
+      `SELECT d.*, 
+              CASE 
+                WHEN d.status = 'pending' THEN 'Pending Approval'
+                WHEN d.status = 'active' THEN 'Active Donor'
+                WHEN d.status = 'rejected' THEN 'Registration Rejected'
+                WHEN d.status = 'inactive' THEN 'Account Inactive'
+              END as display_status,
+              CASE 
+                WHEN d.status = 'pending' THEN 'Your registration is pending approval from the admin. Please wait for confirmation.'
+                WHEN d.status = 'active' THEN 'Your registration has been approved. You can now receive and respond to donation requests.'
+                WHEN d.status = 'rejected' THEN 'Your registration has been rejected. Please contact support for more information.'
+                WHEN d.status = 'inactive' THEN 'Your account is currently inactive. Please contact support to reactivate.'
+              END as status_message
+       FROM donors d
+       WHERE d.id = ?`,
+      [result.insertId]
+    );
+
+    res.status(201).json({
       success: true,
-      requests
+      message: 'Donor registration submitted successfully. Waiting for admin approval.',
+      data: {
+        id: result.insertId,
+        userId: req.user.id,
+        fullName: full_name,
+        bloodType: blood_type,
+        status: 'pending',
+        displayStatus: 'Pending Approval',
+        statusMessage: 'Your registration is pending approval from the admin. Please wait for confirmation.',
+        contactNumber: contact_number,
+        address: address,
+        district: district,
+        state: state,
+        country: country,
+        lastDonationDate: last_donation_date || null,
+        donationGapMonths: parseInt(donation_gap_months) || 0
+      }
     });
-
   } catch (error) {
-    console.error('Error fetching blood requests:', error);
+    console.error('Error creating donor:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch blood requests',
+      message: 'Internal server error',
       error: error.message
     });
   }
 });
 
-// Accept blood request for a specific donor
-router.post('/:donorId/accept-request', authMiddleware.authenticate, async (req, res) => {
+// Get donor status
+router.get('/:donorId/status', authenticateToken, async (req, res) => {
   try {
-    const { requestId } = req.body;
-    const donorId = req.params.donorId;
+    const { donorId } = req.params;
+    const userId = req.user.id;
 
-    // Check if the donor exists and is approved
-    const [donor] = await db.execute(
-      'SELECT user_id, status FROM donors WHERE id = ?',
-      [donorId]
-    );
+    const sql = `
+      SELECT 
+        status,
+        last_donation_date,
+        donation_gap_months,
+        CASE 
+          WHEN status = 'pending' THEN 'Your registration is pending approval'
+          WHEN status = 'active' THEN 'Your registration has been approved'
+          WHEN status = 'rejected' THEN 'Your registration has been rejected'
+          WHEN status = 'inactive' THEN 'Your account is currently inactive'
+          ELSE 'Unknown status'
+        END as status_message
+      FROM donors
+      WHERE id = ? AND user_id = ?
+    `;
 
-    if (!donor.length || donor[0].status !== 'approved') {
-      return res.status(403).json({
+    const [rows] = await db.execute(sql, [donorId, userId]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: 'Only approved donors can accept requests'
+        message: 'Donor not found'
       });
     }
 
-    // Check if the authenticated user is the donor
-    if (req.user.id !== donor[0].user_id) {
-      return res.status(403).json({
+    res.json({
+      success: true,
+      data: {
+        status: rows[0].status,
+        statusMessage: rows[0].status_message,
+        lastDonationDate: rows[0].last_donation_date,
+        donationGapMonths: rows[0].donation_gap_months
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching donor status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch donor status',
+      error: error.message
+    });
+  }
+});
+
+// Update donor status
+router.patch('/:donorId/status', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const { donorId } = req.params;
+
+    if (!['pending', 'active', 'inactive', 'rejected'].includes(status)) {
+      return res.status(400).json({
         success: false,
-        message: 'Unauthorized to accept this request'
+        message: 'Invalid status. Status must be one of: pending, active, inactive, rejected'
       });
     }
 
-    // Update the receiver with the selected donor
     const [result] = await db.execute(
-      'UPDATE receivers SET selected_donor_id = ? WHERE id = ? AND selected_donor_id IS NULL',
-      [donorId, requestId]
+      'UPDATE donors SET status = ? WHERE id = ? AND user_id = ?',
+      [status, donorId, req.user.id]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: 'Blood request not found or already accepted'
+        message: 'Donor not found or you do not have permission to update this donor'
       });
     }
 
+    // Get updated donor data
+    const [updatedDonor] = await db.execute(`
+      SELECT d.*, 
+              CASE 
+                WHEN d.status = 'pending' THEN 'Pending Approval'
+                WHEN d.status = 'active' THEN 'Active Donor'
+                WHEN d.status = 'rejected' THEN 'Registration Rejected'
+                WHEN d.status = 'inactive' THEN 'Account Inactive'
+              END as display_status,
+              CASE 
+                WHEN d.status = 'pending' THEN 'Your registration is pending approval from the admin. Please wait for confirmation.'
+                WHEN d.status = 'active' THEN 'Your registration has been approved. You can now receive and respond to donation requests.'
+                WHEN d.status = 'rejected' THEN 'Your registration has been rejected. Please contact support for more information.'
+                WHEN d.status = 'inactive' THEN 'Your account is currently inactive. Please contact support to reactivate.'
+              END as status_message
+       FROM donors d
+       WHERE d.id = ?`,
+      [donorId]
+    );
+
     res.json({
       success: true,
-      message: 'Blood request accepted successfully'
+      message: 'Status updated successfully',
+      data: updatedDonor[0]
     });
   } catch (error) {
-    console.error('Error accepting blood request:', error);
+    console.error('Error updating donor status:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to accept blood request',
+      message: 'Internal server error',
       error: error.message
     });
   }
 });
-
-// ✅ Admin routes
-router.put('/:id/status', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.approveDonor);
-router.get('/all', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.getAllDonors);
-
-//router.get('/blood-requests', authMiddleware.authenticate, authMiddleware.authorizeAdmin, bloodRequestController.getAllBloodRequests);
-
-// 🌍 Public route for nearby donors
-//router.get('/nearby', donorController.getNearbyDonors);
 
 module.exports = router;

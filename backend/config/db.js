@@ -1,33 +1,94 @@
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'blood_donation_db',
+  database: process.env.DB_NAME || 'auth_system',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
-}).promise(); // Create a promise-based pool
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+  multipleStatements: false,
+  dateStrings: true,
+  timezone: 'local',
+  connectTimeout: 10000,
+  debug: process.env.NODE_ENV === 'development'
+});
 
-// Test the connection
-pool.getConnection()
-  .then(connection => {
-    console.log('Connected to database as ID', connection.threadId);
+// Wrapper function to handle database queries with better error handling
+const execute = async (sql, params = []) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    console.log('=== Database Query Start ===');
+    console.log('SQL:', sql);
+    console.log('Parameters:', params);
+    
+    const [results] = await connection.execute(sql, params);
+    console.log('Query successful, result length:', Array.isArray(results) ? results.length : 1);
+    return [results];
+  } catch (error) {
+    console.error('=== Database Error ===');
+    console.error('Error type:', error.name);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    if (error.sql) {
+      console.error('SQL statement:', error.sql);
+      console.error('SQL message:', error.sqlMessage);
+    }
+    throw error;
+  } finally {
+    if (connection) {
+      try {
+        await connection.release();
+        console.log('Database connection released');
+      } catch (releaseError) {
+        console.error('Error releasing connection:', releaseError);
+      }
+    }
+    console.log('=== Database Query End ===');
+  }
+};
+
+// Test the connection and log database details
+const testConnection = async () => {
+  try {
+    const connection = await pool.getConnection();
+    console.log('=== Database Connection Test ===');
+    console.log('Connected to database:', process.env.DB_NAME);
+    console.log('Host:', process.env.DB_HOST);
+    console.log('User:', process.env.DB_USER);
+    
+    const [rows] = await connection.execute('SELECT 1');
+    console.log('Test query successful');
+    
     connection.release();
-  })
+    return true;
+  } catch (error) {
+    console.error('=== Database Connection Error ===');
+    console.error('Error type:', error.name);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    if (error.sqlMessage) {
+      console.error('SQL message:', error.sqlMessage);
+    }
+    throw error;
+  }
+};
+
+// Test connection on startup
+testConnection()
+  .then(() => console.log('Database connection pool initialized successfully'))
   .catch(err => {
-    console.error('Database connection failed:', err.stack);
+    console.error('Failed to initialize database connection pool:', err);
     process.exit(1);
   });
 
-// Handle disconnects
-pool.on('error', err => {
-  console.error('Database error:', err);
-  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-    console.log('Database connection was lost. Attempting to reconnect...');
-  }
-});
-
-module.exports = pool;
+module.exports = {
+  pool,
+  execute,
+  testConnection
+};

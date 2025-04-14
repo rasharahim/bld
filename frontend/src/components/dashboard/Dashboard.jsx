@@ -1,56 +1,60 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useAuth } from '../../context/AuthContext';
 import './Dashboard.css';
 
 const Dashboard = () => {
+  const { token, isAuthenticated } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeLink, setActiveLink] = useState('');
   const [notifications, setNotifications] = useState([]);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
     setActiveLink(location.pathname);
-  }, [location]);
+  }, [location, isAuthenticated, navigate]);
 
   useEffect(() => {
-    // Fetch notifications from backend
     const fetchNotifications = async () => {
-        try {
-            const token = localStorage.getItem("token");
-            if (!token) {
-                console.error("No token found. User may not be logged in.");
-                return;
-            }
+      if (!token) return;
+      
+      try {
+        const response = await fetch("http://localhost:5000/api/notifications", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
 
-            const response = await fetch("http://localhost:5000/api/notifications", {
-                method: "GET",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Content-Type": "application/json"
-                },
-                credentials: 'include'
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            if (data.success === false) {
-                throw new Error(data.message || 'Failed to fetch notifications');
-            }
-            setNotifications(data);
-        } catch (error) {
-            console.error("Error fetching notifications:", error);
-            // Don't show error to user since notifications are not critical
-            setNotifications([]);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
+        if (data.success === false) {
+          throw new Error(data.message || 'Failed to fetch notifications');
+        }
+        setNotifications(data);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+        setNotifications([]);
+      }
     };
 
     fetchNotifications();
-}, []);
+  }, [token]);
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <motion.div 

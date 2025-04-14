@@ -8,6 +8,8 @@ const db = require('../config/db');
 const uploadsDir = path.join(__dirname, '../uploads/prescriptions');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+  // Set directory permissions to 777 (full read/write/execute)
+  fs.chmodSync(uploadsDir, '0777');
 }
 
 // Configure multer for file upload
@@ -16,11 +18,29 @@ const storage = multer.diskStorage({
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname));
+    // Create a unique filename with timestamp and original extension
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    cb(null, `prescription_${timestamp}${ext}`);
   }
 });
 
-const upload = multer({ storage: storage });
+// Add file filter to only allow images and PDFs
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only images and PDF files are allowed!'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
 
 exports.upload = upload.single('prescription');
 
@@ -187,82 +207,93 @@ exports.updateStatus = async (req, res) => {
 // Create a new blood request
 exports.createRequest = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { 
-      bloodType, 
-      quantity, 
-      hospital,
-      fullName,
-      contactNumber,
-      reasonForRequest
+    const {
+      full_name,
+      age,
+      blood_type,
+      contact_number,
+      reason_for_request,
+      country,
+      state,
+      district,
+      address,
+      location_lat,
+      location_lng,
+      location_address
     } = req.body;
 
-    console.log('Received request data:', req.body); // Debug log
+    // Validate required fields
+    const requiredFields = [
+      'full_name', 'age', 'blood_type', 'contact_number',
+      'reason_for_request', 'country', 'state', 'district',
+      'address'
+    ];
 
-    // Validate input
-    if (!bloodType || !quantity || !hospital || !fullName || !contactNumber || !reasonForRequest) {
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    if (missingFields.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields',
-        received: req.body
+        message: 'Missing required fields',
+        missingFields
       });
     }
 
-    // Validate blood type
-    const validBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-    if (!validBloodTypes.includes(bloodType)) {
+    // Validate age
+    if (isNaN(age) || age < 0 || age > 120) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid blood type'
+        message: 'Invalid age'
       });
     }
 
-    // Validate quantity
-    if (quantity <= 0 || quantity > 10) {
-      return res.status(400).json({
-        success: false,
-        message: 'Quantity must be between 1 and 10 units'
-      });
+    // Handle prescription file
+    let prescription_path = null;
+    if (req.file) {
+      prescription_path = req.file.path;
     }
 
-    // Create blood request
-    const [result] = await db.execute(
-      `INSERT INTO receivers (
-        user_id, 
-        blood_type, 
-        quantity, 
-        hospital,
-        full_name,
-        contact_number,
-        reason_for_request,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-      [userId, bloodType, quantity, hospital, fullName, contactNumber, reasonForRequest]
-    );
+    // Insert into database
+    const sql = `INSERT INTO receivers (
+      user_id, full_name, age, blood_type, contact_number,
+      reason_for_request, prescription_path, country,
+      state, district, address, location_lat, location_lng,
+      location_address, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`;
 
-    console.log('Database insert result:', result); // Debug log
+    const values = [
+      req.user.id,
+      full_name,
+      parseInt(age),
+      blood_type,
+      contact_number,
+      reason_for_request,
+      prescription_path,
+      country,
+      state,
+      district,
+      address,
+      location_lat ? parseFloat(location_lat) : null,
+      location_lng ? parseFloat(location_lng) : null,
+      location_address || null
+    ];
 
-    // Fetch the created request
-    const [request] = await db.execute(
-      `SELECT * FROM receivers WHERE id = ?`,
-      [result.insertId]
-    );
-
-    console.log('Created request:', request[0]); // Debug log
+    const [result] = await db.execute(sql, values);
 
     res.status(201).json({
       success: true,
       message: 'Blood request created successfully',
-      request: request[0]
+      data: {
+        id: result.insertId,
+        ...req.body,
+        prescription_path
+      }
     });
-
   } catch (error) {
-    console.error('Error in createRequest:', error);
+    console.error('Error creating blood request:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating blood request',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: 'Internal server error',
+      error: error.message
     });
   }
 };
@@ -271,27 +302,48 @@ exports.createRequest = async (req, res) => {
 exports.getUserRequests = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log('Fetching requests for user:', userId);
 
+    // First, get all requests for the user
     const [requests] = await db.execute(
       `SELECT 
         r.*,
         u.full_name,
         u.phone_number,
         r.location_lat as latitude,
-        r.location_lng as longitude,
-        d.full_name as donor_name,
-        d.contact_number as donor_contact
+        r.location_lng as longitude
       FROM receivers r
       JOIN users u ON r.user_id = u.id
-      LEFT JOIN donors d ON r.selected_donor_id = d.id
       WHERE r.user_id = ?
       ORDER BY r.created_at DESC`,
       [userId]
     );
 
+    console.log('Found requests:', requests.length);
+
+    // If there are requests with selected donors, get their information
+    const requestsWithDonors = await Promise.all(requests.map(async (request) => {
+      if (request.selected_donor_id) {
+        const [donor] = await db.execute(
+          `SELECT full_name, phone_number 
+           FROM users 
+           WHERE id = ?`,
+          [request.selected_donor_id]
+        );
+        if (donor && donor.length > 0) {
+          return {
+            ...request,
+            donor_name: donor[0].full_name,
+            donor_contact: donor[0].phone_number
+          };
+        }
+      }
+      return request;
+    }));
+
     res.json({
       success: true,
-      requests
+      requests: requestsWithDonors || []
     });
   } catch (error) {
     console.error('Error in getUserRequests:', error);
@@ -334,47 +386,35 @@ exports.updateRequestStatus = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { status } = req.body;
-    const userId = req.user.id;
 
-    // Validate status
-    const validStatuses = ['Pending', 'Approved', 'Rejected', 'Completed'];
-    if (!validStatuses.includes(status)) {
+    if (!['pending', 'approved', 'rejected', 'completed'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid status'
       });
     }
 
-    // Check if request exists and belongs to user
-    const [request] = await db.execute(
-      'SELECT * FROM receivers WHERE id = ? AND user_id = ?',
-      [requestId, userId]
+    const [result] = await db.execute(
+      'UPDATE receivers SET status = ? WHERE id = ? AND user_id = ?',
+      [status, requestId, req.user.id]
     );
 
-    if (request.length === 0) {
+    if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Request not found or unauthorized'
+        message: 'Request not found'
       });
     }
 
-    // Update status
-    await db.execute(
-      'UPDATE receivers SET status = ? WHERE id = ?',
-      [status, requestId]
-    );
-
     res.json({
       success: true,
-      message: 'Request status updated successfully'
+      message: 'Status updated successfully'
     });
-
   } catch (error) {
-    console.error('Error in updateRequestStatus:', error);
+    console.error('Error updating request status:', error);
     res.status(500).json({
       success: false,
-      message: 'Error updating request status',
-      error: error.message
+      message: 'Internal server error'
     });
   }
 };
@@ -415,6 +455,127 @@ exports.deleteRequest = async (req, res) => {
       success: false,
       message: 'Error deleting request',
       error: error.message
+    });
+  }
+};
+
+// Get request by ID
+exports.getRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const [rows] = await db.execute(
+      `SELECT r.*, u.email, u.phone_number
+       FROM receivers r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.id = ? AND r.user_id = ?`,
+      [requestId, req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching request:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get request status
+exports.getRequestStatus = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const [rows] = await db.execute(
+      'SELECT status FROM receivers WHERE id = ? AND user_id = ?',
+      [requestId, req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      status: rows[0].status
+    });
+  } catch (error) {
+    console.error('Error fetching request status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
+// Get nearby donors
+exports.getNearbyDonors = async (req, res) => {
+  try {
+    const { latitude, longitude, radius = 20 } = req.query;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude and longitude are required'
+      });
+    }
+
+    const [request] = await db.execute(
+      'SELECT blood_type FROM receivers WHERE id = ? AND user_id = ?',
+      [req.params.requestId, req.user.id]
+    );
+
+    if (!request.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    // Get nearby donors using Haversine formula
+    const [donors] = await db.execute(`
+      SELECT 
+        d.*,
+        u.full_name as donor_name,
+        u.contact_number as donor_contact,
+        (
+          6371 * acos(
+            cos(radians(?)) * cos(radians(d.location_lat)) *
+            cos(radians(d.location_lng) - radians(?)) +
+            sin(radians(?)) * sin(radians(d.location_lat))
+          )
+        ) AS distance
+      FROM donors d
+      JOIN users u ON d.user_id = u.id
+      WHERE d.status = 'active'
+        AND d.blood_type = ?
+      HAVING distance <= ?
+      ORDER BY distance
+    `, [latitude, longitude, latitude, request[0].blood_type, radius]);
+
+    res.json({
+      success: true,
+      data: donors
+    });
+  } catch (error) {
+    console.error('Error fetching nearby donors:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 };

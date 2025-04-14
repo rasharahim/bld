@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const Gps = ({ setLocation }) => {
+const Gps = ({ onLocationUpdate }) => {
     const [error, setError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [locationData, setLocationData] = useState(null);
@@ -43,16 +43,29 @@ const Gps = ({ setLocation }) => {
                         const result = data.results[0];
                         const components = result.components;
                         
+                        // Extract address components
+                        const country = components.country || "India";
+                        const state = components.state || "Kerala";
+                        const district = components.state_district || components.county || components.city || "";
+                        const street = components.road || components.suburb || components.neighbourhood || "";
                         const address = result.formatted;
-                        const district = components.county || components.city || components.state_district || "";
-                        const street = components.road || components.neighbourhood || "";
                         
+                        console.log("Extracted location components:", {
+                            country,
+                            state,
+                            district,
+                            street,
+                            address
+                        });
+
                         const newLocationData = {
                             latitude,
                             longitude,
                             lat: latitude,
                             lng: longitude,
                             address,
+                            country,
+                            state,
                             district,
                             street,
                             formatted_address: address
@@ -61,8 +74,8 @@ const Gps = ({ setLocation }) => {
                         console.log("Location data to be sent:", newLocationData);
                         setLocationData(newLocationData);
                         
-                        if (setLocation) {
-                            setLocation(newLocationData);
+                        if (onLocationUpdate) {
+                            onLocationUpdate(newLocationData);
                         }
                     } else {
                         throw new Error("No results found from OpenCage API");
@@ -118,6 +131,10 @@ const Gps = ({ setLocation }) => {
                             </div>
                             <div className="address">
                                 <p>Address: {locationData.address || "Fetching address..."}</p>
+                                <p>Country: {locationData.country}</p>
+                                <p>State: {locationData.state}</p>
+                                <p>District: {locationData.district}</p>
+                                <p>Street: {locationData.street}</p>
                             </div>
                         </div>
                     ) : (

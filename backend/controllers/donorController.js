@@ -2,27 +2,33 @@ const db = require('../config/db');
 const { validationResult } = require('express-validator');
 
 const donorController = {
+  // Create a new donor
   createDonor: async (req, res) => {
-    let connection;
     try {
-      // 1. Log the incoming request
-      console.log('Headers:', req.headers);
-      console.log('User from token:', req.user);
-      console.log('Request body:', JSON.stringify(req.body, null, 2));
+      const {
+        full_name,
+        date_of_birth,
+        blood_type,
+        weight,
+        contact_number,
+        availability_time,
+        health_condition,
+        last_donation_date,
+        donation_gap_months,
+        country,
+        state,
+        district,
+        address,
+        location_lat,
+        location_lng,
+        location_address
+      } = req.body;
 
-      // 2. Authentication check
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({ 
-          success: false, 
-          message: "Unauthorized: User not logged in",
-          debug: { user: req.user }
-        });
-      }
-
-      // 3. Validate required fields
+      // Validate required fields
       const requiredFields = [
-        'fullName', 'dob', 'age', 'weight', 'bloodType',
-        'availabilityStart', 'availabilityEnd', 'contactNumber'
+        'full_name', 'date_of_birth', 'blood_type', 'weight',
+        'contact_number', 'availability_time', 'country',
+        'state', 'district', 'address'
       ];
 
       const missingFields = requiredFields.filter(field => !req.body[field]);
@@ -34,189 +40,283 @@ const donorController = {
         });
       }
 
-      // 4. Extract and validate data
-      const {
-        fullName, dob, age, weight, bloodType, hasDonatedBefore,
-        lastDonationDate, donationGap, healthCondition, availabilityStart,
-        availabilityEnd, contactNumber, country, state, district,
-        street, location
-      } = req.body;
-
-      // 5. Validate numeric fields
-      if (isNaN(age) || age < 18 || age > 65) {
-        return res.status(400).json({
-          success: false,
-          message: 'Age must be between 18 and 65'
-        });
-      }
-
-      if (isNaN(weight) || weight < 45) {
-        return res.status(400).json({
-          success: false,
-          message: 'Weight must be at least 45kg'
-        });
-      }
-
-      // 6. Get connection and begin transaction
-      connection = await db.getConnection();
-      await connection.beginTransaction();
-      
-      try {
-        console.log("Starting donor creation for user:", req.user.id);
-        
-        // 7. Insert donor record
-        const [result] = await connection.execute(
-          `INSERT INTO donors (
-            user_id, full_name, dob, age, weight, blood_type, 
-            has_donated_before, last_donation_date, donation_gap_months,
-            health_conditions, availability_start, availability_end,
-            contact_number, country, state, district, street,
-            location_lat, location_lng, location_address, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-          [
-            req.user.id,
-            fullName,
-            dob,
-            age,
-            weight,
-            bloodType,
-            hasDonatedBefore || false,
-            lastDonationDate || null,
-            donationGap || null,
-            JSON.stringify(healthCondition || []),
-            availabilityStart,
-            availabilityEnd,
-            contactNumber,
-            country || null,
-            state || null,
-            district || null,
-            street || null,
-            location?.lat || null,
-            location?.lng || null,
-            location?.address || null
-          ]
-        );
-
-        // 8. Commit transaction
-        await connection.commit();
-        console.log("Donor created successfully, ID:", result.insertId);
-
-        // 9. Send success response
-        res.status(201).json({
-          success: true,
-          message: 'Donor registration submitted successfully',
-          donorId: result.insertId
-        });
-
-      } catch (dbError) {
-        // 10. Handle database errors
-        console.error("Database error:", dbError);
-        if (connection) {
-          await connection.rollback();
-        }
-        
-        // Check for specific MySQL errors
-        if (dbError.code === 'ER_DUP_ENTRY') {
-          return res.status(400).json({
-            success: false,
-            message: 'You have already registered as a donor'
-          });
-        }
-
-        throw dbError; // Re-throw for general error handling
-      }
-
-    } catch (error) {
-      // 11. General error handling
-      console.error('Donor creation failed:', {
-        error: error.message,
-        stack: error.stack,
-        body: req.body
-      });
-
-      res.status(500).json({
-        success: false,
-        message: 'Failed to register donor',
-        error: error.message,
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      });
-    } finally {
-      if (connection) {
-        connection.release(); // Always release the connection
-      }
-    }
-  },
-
-  getDonor: async (req, res) => {
-    try {
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({ success: false, message: "Unauthorized: User not logged in" });
-      }
-      
-      console.log("Fetching donor for user ID:", req.user.id);
-      const [rows] = await db.execute(
-        'SELECT * FROM donors WHERE user_id = ?',
+      // Check if user is already a donor
+      const [existingDonor] = await db.execute(
+        'SELECT id FROM donors WHERE user_id = ?',
         [req.user.id]
       );
 
-      if (!rows.length) {
-        return res.status(404).json({ success: false, message: 'Donor not found' });
+      if (existingDonor.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'User is already registered as a donor'
+        });
       }
 
-      console.log("Successfully fetched donor ID:", rows[0].id);
-      res.json({ success: true, donor: rows[0] });
+      // Insert into database
+      const sql = `INSERT INTO donors (
+        user_id, full_name, date_of_birth, blood_type, weight,
+        contact_number, availability_time, health_condition,
+        last_donation_date, donation_gap_months, country,
+        state, district, address, location_lat, location_lng,
+        location_address, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+      const values = [
+        req.user.id,
+        full_name,
+        date_of_birth,
+        blood_type,
+        parseFloat(weight),
+        contact_number,
+        availability_time,
+        health_condition || null,
+        last_donation_date || null,
+        parseInt(donation_gap_months) || 0,
+        country,
+        state,
+        district,
+        address,
+        location_lat ? parseFloat(location_lat) : null,
+        location_lng ? parseFloat(location_lng) : null,
+        location_address || null,
+        'pending'  // Set status explicitly as the last parameter
+      ];
+
+      const [result] = await db.execute(sql, values);
+
+      // Update user's blood type
+      await db.execute(
+        'UPDATE users SET blood_type = ? WHERE id = ?',
+        [blood_type, req.user.id]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Donor registered successfully',
+        data: {
+          id: result.insertId,
+          ...req.body
+        }
+      });
     } catch (error) {
-      console.error('Donor fetch failed:', error);
-      res.status(500).json({ success: false, message: 'Failed to fetch donor data', error: error.message });
+      console.error('Error creating donor:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: error.message
+      });
     }
   },
 
-  approveDonor: async (req, res) => {
+  // Get donor by ID
+  getDonor: async (req, res) => {
     try {
-      if (!req.user || !req.user.id) {
-        return res.status(401).json({ success: false, message: "Unauthorized: User not logged in" });
-      }
-      
-      if (!req.user.isAdmin) {
-        return res.status(403).json({ success: false, message: 'Unauthorized: Admin access required' });
+      const [rows] = await db.execute(
+        `SELECT d.*, u.email, u.phone_number
+         FROM donors d
+         JOIN users u ON d.user_id = u.id
+         WHERE d.user_id = ?`,
+        [req.user.id]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Donor not found'
+        });
       }
 
-      const { id } = req.params;
+      res.json({
+        success: true,
+        data: rows[0]
+      });
+    } catch (error) {
+      console.error('Error fetching donor:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
+    }
+  },
+
+  // Update donor status
+  updateStatus: async (req, res) => {
+    try {
       const { status } = req.body;
+      const { donorId } = req.params;
 
-      if (!['approved', 'rejected'].includes(status)) {
-        return res.status(400).json({ success: false, message: 'Invalid status value' });
+      if (!['pending', 'active', 'inactive', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid status. Status must be one of: pending, active, inactive, rejected'
+        });
+      }
+
+      const [result] = await db.execute(
+        'UPDATE donors SET status = ? WHERE id = ? AND user_id = ?',
+        [status, donorId, req.user.id]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Donor not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Status updated successfully'
+      });
+    } catch (error) {
+      console.error('Error updating donor status:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
+    }
+  },
+
+  // Get nearby blood requests
+  getNearbyRequests: async (req, res) => {
+    try {
+      const { latitude, longitude, radius = 20 } = req.query;
+
+      if (!latitude || !longitude) {
+        return res.status(400).json({
+          success: false,
+          message: 'Latitude and longitude are required'
+        });
+      }
+
+      const [donor] = await db.execute(
+        'SELECT blood_type FROM donors WHERE user_id = ?',
+        [req.user.id]
+      );
+
+      if (!donor.length) {
+        return res.status(404).json({
+          success: false,
+          message: 'Donor not found'
+        });
+      }
+
+      // Get nearby requests using Haversine formula
+      const [requests] = await db.execute(`
+        SELECT 
+          r.*,
+          u.full_name as requester_name,
+          u.contact_number as requester_contact,
+          (
+            6371 * acos(
+              cos(radians(?)) * cos(radians(r.location_lat)) *
+              cos(radians(r.location_lng) - radians(?)) +
+              sin(radians(?)) * sin(radians(r.location_lat))
+            )
+          ) AS distance
+        FROM receivers r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.status = 'pending'
+          AND r.blood_type = ?
+        HAVING distance <= ?
+        ORDER BY distance
+      `, [latitude, longitude, latitude, donor[0].blood_type, radius]);
+
+      res.json({
+        success: true,
+        data: requests
+      });
+    } catch (error) {
+      console.error('Error fetching nearby requests:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
+    }
+  },
+
+  // Get all donors (admin only)
+  getAllDonors: async (req, res) => {
+    try {
+      const [donors] = await db.execute(`
+        SELECT d.*, u.email, u.phone_number,
+        CASE 
+          WHEN d.status = 'pending' THEN 'Pending Approval'
+          WHEN d.status = 'active' THEN 'Active Donor'
+          WHEN d.status = 'rejected' THEN 'Registration Rejected'
+          WHEN d.status = 'inactive' THEN 'Account Inactive'
+        END as display_status
+        FROM donors d
+        JOIN users u ON d.user_id = u.id
+        ORDER BY d.created_at DESC
+      `);
+
+      res.json({
+        success: true,
+        data: donors
+      });
+    } catch (error) {
+      console.error('Error fetching all donors:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error fetching donors',
+        error: error.message
+      });
+    }
+  },
+
+  // Admin: Update donor approval status
+  updateDonorApproval: async (req, res) => {
+    try {
+      const { status } = req.body;
+      const { donorId } = req.params;
+
+      if (!['active', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid status. Status must be either "active" or "rejected"'
+        });
       }
 
       const [result] = await db.execute(
         'UPDATE donors SET status = ? WHERE id = ?',
-        [status, id]
+        [status, donorId]
       );
 
       if (result.affectedRows === 0) {
-        return res.status(404).json({ success: false, message: 'Donor not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Donor not found'
+        });
       }
 
-      res.json({ success: true, message: `Donor ${status} successfully`, donorId: id, status });
-    } catch (error) {
-      console.error('Donor approval failed:', error);
-      res.status(500).json({ success: false, message: 'Failed to update donor status', error: error.message });
-    }
-  },
+      // Get updated donor data
+      const [updatedDonor] = await db.execute(`
+        SELECT d.*, u.email, u.phone_number,
+        CASE 
+          WHEN d.status = 'pending' THEN 'Pending Approval'
+          WHEN d.status = 'active' THEN 'Active Donor'
+          WHEN d.status = 'rejected' THEN 'Registration Rejected'
+          WHEN d.status = 'inactive' THEN 'Account Inactive'
+        END as display_status
+        FROM donors d
+        JOIN users u ON d.user_id = u.id
+        WHERE d.id = ?
+      `, [donorId]);
 
-  getAllDonors: async (req, res) => {
-    try {
-      if (!req.user || !req.user.isAdmin) {
-        return res.status(403).json({ success: false, message: 'Unauthorized: Admin access required' });
-      }
-
-      const [rows] = await db.execute(
-        'SELECT * FROM donors ORDER BY created_at DESC'
-      );
-      res.json({ success: true, donors: rows });
+      res.json({
+        success: true,
+        message: `Donor ${status === 'active' ? 'approved' : 'rejected'} successfully`,
+        data: updatedDonor[0]
+      });
     } catch (error) {
-      console.error('Fetching all donors failed:', error);
-      res.status(500).json({ success: false, message: 'Failed to fetch donors', error: error.message });
+      console.error('Error updating donor approval:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error updating donor status',
+        error: error.message
+      });
     }
   }
 };

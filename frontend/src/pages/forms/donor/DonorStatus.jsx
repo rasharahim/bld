@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
-import api from '@/utils/axios';
-import auth from '@/utils/auth';
+import { useParams, Link } from "react-router-dom";
+import axios from "axios";
+import auth from "../../../utils/auth";
 import "./DonorStatus.css";
 
 const DonorStatusPage = () => {
@@ -23,10 +23,18 @@ const DonorStatusPage = () => {
         let response;
         if (donorId) {
           // If donorId is provided in URL, fetch that specific donor's status
-          response = await api.get(`/api/donors/${donorId}/status`);
+          response = await axios.get(`/api/donors/${donorId}/status`, {
+            headers: {
+              Authorization: `Bearer ${auth.getToken()}`
+            }
+          });
         } else {
           // Otherwise fetch the current user's donor status
-          response = await api.get(`/api/donors/user/${userId}/status`);
+          response = await axios.get(`/api/donors/user/${userId}/status`, {
+            headers: {
+              Authorization: `Bearer ${auth.getToken()}`
+            }
+          });
         }
 
         if (response.data.success) {
@@ -51,7 +59,11 @@ const DonorStatusPage = () => {
 
   const fetchBloodRequests = async (id) => {
     try {
-      const response = await api.get(`/api/donors/${id}/blood-requests`);
+      const response = await axios.get(`/api/donors/${id}/blood-requests`, {
+        headers: {
+          Authorization: `Bearer ${auth.getToken()}`
+        }
+      });
       if (response.data.success) {
         setBloodRequests(response.data.requests || []);
       }
@@ -63,8 +75,12 @@ const DonorStatusPage = () => {
 
   const handleAcceptRequest = async (requestId) => {
     try {
-      const response = await api.post(`/api/donors/${donorId}/accept-request`, {
+      const response = await axios.post(`/api/donors/${donorId}/accept-request`, {
         requestId: requestId
+      }, {
+        headers: {
+          Authorization: `Bearer ${auth.getToken()}`
+        }
       });
 
       if (response.data.success) {

@@ -35,8 +35,8 @@ const DonorThankYou = () => {
             <Link to="/donation-centers" className="link-button">
               Nearby Donation Centers
             </Link>
-            <Link to={`/donor-status/${donorId}`} className="link-button">
-              Check Your Donation Status
+            <Link to="/donor/status" className="link-button">
+              Check Your Status
             </Link>
           </div>
         </div>

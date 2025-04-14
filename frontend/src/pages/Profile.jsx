@@ -1,58 +1,61 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button, List, ListItem, ListItemText } from '@mui/material';
-import api from '@/utils/axios';
+import React from 'react';
+import { Link } from 'react-router-dom';
+import auth from '../utils/auth';
 
 const Profile = () => {
-  const navigate = useNavigate();
-  const [request, setRequest] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const isLoggedIn = auth.isAuthenticated();
 
-
-  useEffect(() => {
-    const fetchUserRequests = async () => {
-      try {
-        const response = await api.get('/api/receivers/my-requests');
-        if (response.data.success) {
-          setRequests(response.data.requests || []);
-        }
-      } catch (error) {
-        console.error('Error fetching requests:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserRequests();
-  }, []);
-
-  if (loading) return <div>Loading...</div>;
+  if (!isLoggedIn) {
+    return (
+      <div className="text-center mt-20">
+        <p className="text-xl text-gray-600 mb-4">Please login to view your profile</p>
+        <Link
+          to="/login"
+          className="inline-block bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700"
+        >
+          Login
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h2>Your Blood Requests</h2>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <h1 className="text-3xl font-bold text-gray-900 mb-8">Track Status</h1>
       
-      {requests.length === 0 ? (
-        <p>No requests found</p>
-      ) : (
-        <List>
-          {requests.map(request => (
-            <ListItem key={request.id} divider>
-              <ListItemText
-                primary={`Request #${request.id}`}
-                secondary={`Status: ${request.status.toUpperCase()} | Blood Type: ${request.blood_type}`}
-              />
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => navigate(`/receiver/request-status/${request.id}`)}
-              >
-                View Details
-              </Button>
-            </ListItem>
-          ))}
-        </List>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Donor Status Card */}
+        <div className="bg-white shadow rounded-lg p-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Check Donation Status</h2>
+            <p className="text-gray-600 mb-6">
+              View your blood donation history and manage your availability status
+            </p>
+            <Link
+              to="/donor/status"
+              className="inline-block bg-green-600 text-white px-6 py-3 rounded-md font-medium hover:bg-green-700 w-full"
+            >
+              View Donation Status
+            </Link>
+          </div>
+        </div>
+
+        {/* Receiver Status Card */}
+        <div className="bg-white shadow rounded-lg p-8">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Check Request Status</h2>
+            <p className="text-gray-600 mb-6">
+              Track your blood requests and view matched donors
+            </p>
+            <Link
+              to="/receiver/status"
+              className="inline-block bg-pink-600 text-white px-6 py-3 rounded-md font-medium hover:bg-pink-700 w-full"
+            >
+              View Request Status
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

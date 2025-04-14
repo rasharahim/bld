@@ -6,11 +6,16 @@ import '../FormStyles.css';
 const ReceiverThanks = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const requestId = queryParams.get('requestId');
+  const { requestId } = location.state || {};
 
   const handleCheckStatus = () => {
-    navigate(`/request-status/${requestId}`);
+    if (requestId) {
+      console.log("Navigating to status with ID:", requestId);
+      navigate(`/receiver/status/${requestId}`);
+    } else {
+      console.error('No request ID found in location state');
+      navigate('/dashboard');
+    }
   };
 
   return (
@@ -19,6 +24,7 @@ const ReceiverThanks = () => {
         <FaCheckCircle className="success-icon" />
         <h2>Request Submitted Successfully!</h2>
         <p>Your blood request has been submitted and is being processed.</p>
+        <p>Request ID: {requestId}</p>
         <p>You can check the status of your request by clicking the button below.</p>
         
         <button 

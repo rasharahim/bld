@@ -3,12 +3,115 @@ const router = express.Router();
 const authMiddleware = require('../middleware/authMiddleware');
 const receiverController = require('../controllers/receiverController');
 const db = require('../config/db');
+const { authenticateToken } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, '../uploads/prescriptions');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer for file upload
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'prescription-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and PDF files are allowed.'));
+    }
+  }
+});
 
 // Create a new blood request - protected route
 //router.post('/create', authMiddleware.authenticate, receiverController.upload, receiverController.createReceiver);
 
 // Get user's requests - protected route
-router.get('/my-requests', authMiddleware.authenticate, receiverController.getUserRequests);
+router.get('/my-requests', authenticateToken, async (req, res) => {
+  console.log('=== Fetching requests for user ===');
+  console.log('User ID:', req.user.id);
+  
+  try {
+    // First verify the user exists
+    const [userRows] = await db.execute(
+      'SELECT id FROM users WHERE id = ?',
+      [req.user.id]
+    );
+    console.log('User query result:', userRows);
+
+    if (userRows.length === 0) {
+      console.log('User not found');
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Fetch all requests for the user
+    const [rows] = await db.execute(
+      `SELECT r.*, u.full_name, u.email, u.phone_number
+       FROM receivers r
+       LEFT JOIN users u ON r.user_id = u.id
+       WHERE r.user_id = ?
+       ORDER BY r.created_at DESC`,
+      [req.user.id]
+    );
+    console.log('Found requests:', rows.length);
+
+    return res.status(200).json({
+      success: true,
+      requests: rows.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        bloodType: row.blood_type,
+        status: row.status,
+        fullName: row.full_name,
+        contactNumber: row.contact_number,
+        reasonForRequest: row.reason_for_request,
+        address: row.address,
+        district: row.district,
+        state: row.state,
+        country: row.country,
+        prescriptionPath: row.prescription_path,
+        locationLat: row.location_lat,
+        locationLng: row.location_lng,
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    console.error('=== Error fetching receiver requests ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    if (error.sql) {
+      console.error('SQL Error:', {
+        sql: error.sql,
+        sqlMessage: error.sqlMessage
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch blood requests',
+      error: error.message
+    });
+  }
+});
 
 // Get all pending requests - protected route
 router.get('/pending', authMiddleware.authenticate, receiverController.getAllPendingRequests);
@@ -19,57 +122,60 @@ router.put('/:requestId/status', authMiddleware.authenticate, receiverController
 // Delete request - protected route
 router.delete('/:requestId', authMiddleware.authenticate, receiverController.deleteRequest);
 
-// Add this to receiverRoutes.js
-// Add this to your receiverRoutes.js
-router.get('/request/:requestId', authMiddleware.authenticate, async (req, res) => {
+// Get receiver request by ID
+router.get('/request/:id', authenticateToken, async (req, res) => {
+  console.log('Fetching request details for ID:', req.params.id);
+  const connection = await db.getConnection();
+  
   try {
-    const { requestId } = req.params;
-    const userId = req.user.id;
-
-    console.log(`Fetching request ${requestId} for user ${userId}`); // Debug log
-
-    // Simplified query - adjust according to your actual schema
-    const [request] = await db.execute(
-      `SELECT 
-        r.id,
-        r.blood_type,
-        r.status,
-        r.created_at,
-        r.full_name,
-        r.contact_number,
-        r.reason_for_request
-      FROM receivers r
-      WHERE r.id = ? AND r.user_id = ?`,
-      [requestId, userId]
+    const [rows] = await connection.execute(
+      `SELECT r.*, u.full_name, u.email, u.phone_number
+       FROM receivers r
+       LEFT JOIN users u ON r.user_id = u.id
+       WHERE r.id = ?`,
+      [req.params.id]
     );
 
-    if (request.length === 0) {
-      console.log('Request not found or unauthorized');
+    if (rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Request not found or unauthorized'
+        error: 'Request not found'
       });
     }
 
-    console.log('Found request:', request[0]); // Debug log
-
-    res.json({
+    const request = rows[0];
+    return res.status(200).json({
       success: true,
-      request: request[0]  // Ensure this matches frontend expectation
+      request: {
+        id: request.id,
+        userId: request.user_id,
+        bloodType: request.blood_type,
+        status: request.status,
+        fullName: request.full_name,
+        contactNumber: request.contact_number,
+        reasonForRequest: request.reason_for_request,
+        address: request.address,
+        district: request.district,
+        state: request.state,
+        country: request.country,
+        prescriptionPath: request.prescription_path,
+        locationLat: request.location_lat,
+        locationLng: request.location_lng,
+        createdAt: request.created_at
+      }
     });
-
   } catch (error) {
-    console.error('Error in /request/:requestId:', error);
-    res.status(500).json({
+    console.error('Error fetching request details:', error);
+    return res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: 'Failed to fetch request details'
     });
+  } finally {
+    connection.release();
   }
 });
 
-// Get nearby donors
+// Get nearby donors for a request
 router.get('/nearby-donors', authMiddleware.authenticate, async (req, res) => {
   try {
     const { bloodType, latitude, longitude } = req.query;
@@ -128,89 +234,90 @@ router.get('/nearby-donors', authMiddleware.authenticate, async (req, res) => {
 });
 
 // Create new receiver request
-router.post('/create-request', 
-  authMiddleware.authenticate, 
-  receiverController.upload, // This handles file upload
-  async (req, res) => {
-    try {
-      console.log('Request body:', req.body);
-      console.log('Uploaded file:', req.file);
-      
-      // Extract fields from form-data
-      const {
-        full_name,
-        age,
-        blood_type,
-        contact_number,
-        country,
-        state,
-        district,
-        address,
-        location_lat,
-        location_lng,
-        reason_for_request
-      } = req.body;
+router.post('/create-request', authenticateToken, upload.single('prescription'), async (req, res) => {
+  try {
+    // Log all received fields for debugging
+    console.log('Received fields:', Object.keys(req.body));
+    console.log('Received file:', req.file);
+    console.log('Request user:', req.user);
 
-      // Validate required fields
-      const requiredFields = [
-        'full_name', 'age', 'blood_type', 'contact_number',
-        'country', 'state', 'district', 'address', 'reason_for_request'
-      ];
-      
-      const missingFields = requiredFields.filter(field => !req.body[field]);
-      
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Missing required fields',
-          missingFields: missingFields
-        });
-      }
-
-      // Insert into database
-      const [result] = await db.execute(
-        `INSERT INTO receivers (
-          user_id, full_name, age, blood_type, contact_number,
-          country, state, district, address, 
-          location_lat, location_lng, location_address,
-          reason_for_request, prescription_path, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-        [
-          req.user.id,
-          req.body.full_name,
-          req.body.age,
-          req.body.blood_type,
-          req.body.contact_number,
-          req.body.country,
-          req.body.state,
-          req.body.district,
-          req.body.address,
-          req.body.location_lat || null,
-          req.body.location_lng || null,
-          req.body.location_address || req.body.address, // Fallback to address if location_address not provided
-          req.body.reason_for_request,
-          req.file ? req.file.filename : null
-        ]
-      );
-
-      res.status(201).json({
-        success: true,
-        message: 'Blood request created successfully',
-        data: {
-          id: result.insertId
-        }
-      });
-
-    } catch (error) {
-      console.error('Error in /create-request:', error);
-      res.status(500).json({
+    // Validate required fields
+    const requiredFields = [
+      'full_name', 'age', 'blood_type', 'contact_number',
+      'country', 'state', 'district', 'address', 'reason_for_request'
+    ];
+    
+    const missingFields = requiredFields.filter(field => !req.body[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({
         success: false,
-        message: 'Internal server error',
-        error: error.message
+        message: 'Missing required fields',
+        missingFields: missingFields
       });
     }
+
+    // Log the SQL query and values
+    const sql = `INSERT INTO receivers (
+      id, user_id, full_name, age, blood_type, contact_number,
+      country, state, district, address,
+      location_lat, location_lng, location_address,
+      reason_for_request, prescription_path,
+      status, created_at
+    ) VALUES (
+      NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+    )`;
+
+    const values = [
+      req.user.id,
+      req.body.full_name,
+      parseInt(req.body.age),
+      req.body.blood_type,
+      req.body.contact_number,
+      req.body.country,
+      req.body.state,
+      req.body.district,
+      req.body.address,
+      req.body.location_lat === 'null' ? null : parseFloat(req.body.location_lat),
+      req.body.location_lng === 'null' ? null : parseFloat(req.body.location_lng),
+      req.body.address, // Use the full address for location_address
+      req.body.reason_for_request,
+      req.file ? req.file.filename : null,
+      'pending'  // Default status for new requests
+    ];
+
+    // Insert into database
+    const [result] = await db.execute(sql, values);
+    console.log('Successfully inserted receiver with ID:', result.insertId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Blood request created successfully',
+      data: {
+        id: result.insertId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in /create-request:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
-);
+});
+
+// Get request by ID
+router.get('/:requestId', authenticateToken, receiverController.getRequest);
+
+// Get request status
+router.get('/:requestId/status', authenticateToken, receiverController.getRequestStatus);
+
+// Update request status
+router.patch('/:requestId/status', authenticateToken, receiverController.updateRequestStatus);
 
 // Select a donor
 router.post('/select-donor', authMiddleware.authenticate, async (req, res) => {
