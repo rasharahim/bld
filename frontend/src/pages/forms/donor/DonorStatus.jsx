@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import api from '@/utils/axios';
+import auth from '@/utils/auth';
 import "./DonorStatus.css";
 
 const DonorStatusPage = () => {
   const { donorId } = useParams();
   const [donorStatus, setDonorStatus] = useState("pending");
+  const [donorInfo, setDonorInfo] = useState(null);
   const [bloodRequests, setBloodRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,46 +15,61 @@ const DonorStatusPage = () => {
   useEffect(() => {
     const fetchDonorStatus = async () => {
       try {
-        const response = await api.get('/api/donors/status');
+        const userId = auth.getTokenPayload()?.id;
+        if (!userId) {
+          throw new Error('User not authenticated');
+        }
+
+        let response;
+        if (donorId) {
+          // If donorId is provided in URL, fetch that specific donor's status
+          response = await api.get(`/api/donors/${donorId}/status`);
+        } else {
+          // Otherwise fetch the current user's donor status
+          response = await api.get(`/api/donors/user/${userId}/status`);
+        }
+
         if (response.data.success) {
           setDonorStatus(response.data.status);
+          setDonorInfo(response.data.donor);
           if (response.data.status === 'approved') {
-            fetchBloodRequests();
+            fetchBloodRequests(response.data.donor.id);
           }
         } else {
-          setError('Failed to fetch donor status');
+          setError(response.data.message || 'Failed to fetch donor status');
         }
       } catch (err) {
         console.error('Error fetching donor status:', err);
-        setError('Failed to fetch donor status');
+        setError(err.response?.data?.message || err.message || 'Failed to fetch donor status');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDonorStatus();
-  }, []);
+  }, [donorId]);
 
-  const fetchBloodRequests = async () => {
+  const fetchBloodRequests = async (id) => {
     try {
-      const response = await api.get('/api/blood-requests');
+      const response = await api.get(`/api/donors/${id}/blood-requests`);
       if (response.data.success) {
         setBloodRequests(response.data.requests || []);
       }
     } catch (err) {
       console.error('Error fetching blood requests:', err);
+      setError(err.response?.data?.message || 'Failed to fetch blood requests');
     }
   };
 
-  const handleAcceptRequest = async (id) => {
+  const handleAcceptRequest = async (requestId) => {
     try {
-      const response = await api.post('/api/donors/accept-request', {
-        requestId: id
+      const response = await api.post(`/api/donors/${donorId}/accept-request`, {
+        requestId: requestId
       });
 
       if (response.data.success) {
         alert('Request accepted! You can now contact the receiver.');
-        fetchBloodRequests(); // Refresh the list
+        fetchBloodRequests(donorId); // Refresh the list
       } else {
         throw new Error(response.data.message || 'Failed to accept request');
       }
@@ -78,9 +95,48 @@ const DonorStatusPage = () => {
     );
   }
 
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not available';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
   return (
     <div className="status-container">
       <h1>Donor Status</h1>
+      
+      {donorInfo && (
+        <div className="donor-info">
+          <h2>Donor Information</h2>
+          <div className="info-grid">
+            <div className="info-item">
+              <label>Name:</label>
+              <span>{donorInfo.fullName}</span>
+            </div>
+            <div className="info-item">
+              <label>Blood Type:</label>
+              <span>{donorInfo.bloodType}</span>
+            </div>
+            <div className="info-item">
+              <label>Registration Date:</label>
+              <span>{formatDate(donorInfo.registeredDate)}</span>
+            </div>
+            <div className="info-item">
+              <label>Last Donation:</label>
+              <span>{formatDate(donorInfo.lastDonationDate)}</span>
+            </div>
+            {donorInfo.donationGapMonths && (
+              <div className="info-item">
+                <label>Donation Gap:</label>
+                <span>{donorInfo.donationGapMonths} months</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       
       {donorStatus === "pending" && (
         <div className="status-message pending">
@@ -107,8 +163,14 @@ const DonorStatusPage = () => {
                     <div className="request-info">
                       <h3>{request.user_name}</h3>
                       <p><strong>Blood Type:</strong> {request.blood_type}</p>
-                      <p><strong>Distance:</strong> {request.distance} km</p>
+                      <p><strong>Distance:</strong> {request.distance.toFixed(1)} km</p>
                       <p><strong>Location:</strong> {request.address}</p>
+                      {request.urgency && (
+                        <p className="urgency"><strong>Urgency:</strong> {request.urgency}</p>
+                      )}
+                      {request.additional_notes && (
+                        <p className="notes"><strong>Notes:</strong> {request.additional_notes}</p>
+                      )}
                     </div>
                     <button 
                       className="accept-btn"

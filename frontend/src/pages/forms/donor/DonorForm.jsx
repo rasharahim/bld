@@ -34,7 +34,7 @@ const DonorForm = () => {
     district: "",
     street: "",
     contactNumber: "",
-    location: { lat: null, lng: null, address: "" },
+    location: null  // Changed from empty object to null
   });
 
   const [errors, setErrors] = useState({});
@@ -110,20 +110,68 @@ const DonorForm = () => {
   };
 
   const handleLocationChange = (newLocation) => {
-    setDonor((prev) => ({ 
-      ...prev, 
-      location: {
-        lat: newLocation.lat,
-        lng: newLocation.lng,
-        address: newLocation.address || ""
-      }
+    console.log("Received new location:", newLocation);
+    
+    if (!newLocation || !newLocation.latitude || !newLocation.longitude) {
+      console.error("Invalid location data received:", newLocation);
+      setErrors(prev => ({ 
+        ...prev, 
+        location: "Invalid location data received. Please try getting location again." 
+      }));
+      return;
+    }
+
+    // Create location object with all required fields
+    const locationData = {
+      lat: parseFloat(newLocation.latitude),
+      lng: parseFloat(newLocation.longitude),
+      address: newLocation.address || newLocation.formatted_address || "",
+      district: newLocation.district || "",
+      street: newLocation.street || ""
+    };
+
+    console.log("Setting location data:", locationData);
+
+    // Update donor state with the new location data
+    setDonor(prev => ({
+      ...prev,
+      location: locationData,
+      district: locationData.district || prev.district,
+      street: locationData.street || prev.street
     }));
-    setErrors(prev => ({ ...prev, location: undefined }));
+
+    // Clear any location errors
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors.location;
+      return newErrors;
+    });
   };
 
   const validateForm = () => {
     let validationErrors = {};
 
+    // Required fields validation
+    const requiredFields = {
+      fullName: "Full Name",
+      dob: "Date of Birth",
+      age: "Age",
+      weight: "Weight",
+      bloodType: "Blood Type",
+      contactNumber: "Contact Number",
+      availabilityStart: "Availability Start Time",
+      availabilityEnd: "Availability End Time",
+      healthCondition: "Health Condition"
+    };
+
+    // Check all required fields
+    Object.entries(requiredFields).forEach(([field, label]) => {
+      if (!donor[field] || (Array.isArray(donor[field]) && donor[field].length === 0)) {
+        validationErrors[field] = `${label} is required.`;
+      }
+    });
+
+    // Specific validations
     if (!donor.fullName.trim()) validationErrors.fullName = "Full Name is required.";
     if (!donor.dob) validationErrors.dob = "Date of Birth is required.";
     if (!donor.age || isNaN(donor.age) || donor.age < 18 || donor.age > 65)
@@ -131,6 +179,7 @@ const DonorForm = () => {
     if (!donor.weight || isNaN(donor.weight) || donor.weight < 45)
       validationErrors.weight = "Minimum weight requirement is 45kg.";
     if (!donor.bloodType) validationErrors.bloodType = "Please select a blood type.";
+    
     if (donor.hasDonatedBefore) {
       if (!donor.lastDonationDate) {
         validationErrors.lastDonationDate = "Please provide your last donation date";
@@ -138,6 +187,11 @@ const DonorForm = () => {
       if (donor.donationGap < 3) {
         validationErrors.donationGap = "Minimum donation gap is 3 months.";
       }
+    }
+
+    // Health condition validation
+    if (donor.healthCondition.length === 0) {
+      validationErrors.healthCondition = "Please select at least one health condition or 'None of the Above'";
     }
 
     const hasRestrictedCondition = donor.healthCondition.some((condition) =>
@@ -150,15 +204,40 @@ const DonorForm = () => {
 
     if (!/^\d{10}$/.test(donor.contactNumber))
       validationErrors.contactNumber = "Enter a valid 10-digit phone number.";
-    if (!donor.availabilityStart || !donor.availabilityEnd)
-      validationErrors.availabilityTime = "Please select an availability time range.";
 
+    // Validate availability times
+    if (!donor.availabilityStart || !donor.availabilityEnd) {
+      validationErrors.availabilityTime = "Please select an availability time range.";
+    } else {
+      const startTime = donor.availabilityStart.split(':').map(Number);
+      const endTime = donor.availabilityEnd.split(':').map(Number);
+      if (startTime[0] > endTime[0] || (startTime[0] === endTime[0] && startTime[1] > endTime[1])) {
+        validationErrors.availabilityTime = "End time must be after start time";
+      }
+    }
+
+    // Location validation
     if (locationMethod === "address") {
       if (!donor.country) validationErrors.country = "Country is required.";
       if (!donor.state) validationErrors.state = "State is required.";
       if (!donor.district) validationErrors.district = "District is required.";
       if (!donor.street) validationErrors.street = "Street address is required.";
+    } else if (locationMethod === "gps") {
+      // GPS validation
+      console.log("Validating GPS location:", donor.location);
+      if (!donor.location) {
+        validationErrors.location = "Please get your current location using GPS";
+      } else {
+        const { lat, lng, address } = donor.location;
+        if (!lat || !lng || !address) {
+          validationErrors.location = "Please get your current location using GPS";
+        } else if (isNaN(lat) || isNaN(lng)) {
+          validationErrors.location = "Invalid GPS coordinates. Please try getting location again.";
+        }
+      }
     }
+
+    console.log("Validation Errors:", validationErrors);
     setErrors(validationErrors);
     return Object.keys(validationErrors).length === 0;
   };
@@ -166,72 +245,128 @@ const DonorForm = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    let requestData = {};
+    
     try {
         // 1. Authentication Check
-        const token = auth.getToken(); // Using the auth helper
+        const token = auth.getToken();
+        if (!token) {
+            throw new Error("No authentication token found");
+        }
         
         // 2. Form Validation
         if (!validateForm()) {
-            return; // Stop if validation fails
-        }
-
-        // 3. Prepare Request Data
-        const requestData = {
-            ...donor,
-            location: {
-                method: locationMethod,
-                ...donor.location
-            },
-            userId: auth.getTokenPayload()?.id // Include user ID from token
-        };
-
-        console.log("Submitting donor data:", requestData);
-
-        // 4. API Request using Axios
-        const response = await axios.post(
-            `http://localhost:5000/api/donors/createDonor `,  // Use Vite env variable
-            requestData,
-            {
-                headers: { 
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                }
-            }
-        );
-
-        // 5. Success Handling
-        console.log("Donor registration successful:", response.data);
-        navigate('/donor-thanks', {
-            state: {
-                donorId: response.data.donorId,
-                message: "Thank you for registering as a donor!"
-            }
-        });
-
-    } catch (error) {
-        console.error("Donor submission error:", {
-            error: error.response ? error.response.data : error.message,
-            status: error.response?.status,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
-
-        // Handle authentication error
-        if (error.response?.status === 401) {
-            auth.removeToken();
-            navigate('/login', { state: { from: 'donor-form' } });
+            console.log("Form validation failed", errors);
             return;
         }
 
-        alert(
-            error.response?.data?.message || 
-            `Submission failed: ${error.message}`
-        );
+        // 3. Prepare Request Data
+        requestData = {
+            user_id: auth.getTokenPayload()?.id,
+            fullName: donor.fullName.trim(),
+            dob: donor.dob,
+            age: parseInt(donor.age),
+            weight: parseFloat(donor.weight),
+            bloodType: donor.bloodType,
+            has_donated_before: donor.hasDonatedBefore ? 1 : 0,
+            last_donation_date: donor.lastDonationDate || null,
+            donation_gap_months: donor.donationGap ? parseInt(donor.donationGap) : null,
+            health_conditions: donor.healthCondition.length > 0 ? donor.healthCondition[0] : null,
+            availabilityStart: donor.availabilityStart,
+            availabilityEnd: donor.availabilityEnd,
+            contactNumber: donor.contactNumber.trim(),
+            country: 'India',
+            state: 'Kerala',
+            district: locationMethod === 'gps' ? donor.location?.district : donor.district,
+            street: locationMethod === 'gps' ? donor.location?.street : donor.street,
+            location_lat: locationMethod === 'gps' && donor.location?.lat ? donor.location.lat.toString() : null,
+            location_lng: locationMethod === 'gps' && donor.location?.lng ? donor.location.lng.toString() : null,
+            location_address: locationMethod === 'gps' && donor.location?.address ? donor.location.address : null,
+            status: 'pending'
+        };
 
-        if (error.message.includes("token")) {
-            auth.removeToken();
-            navigate('/login');
+        // Ensure location fields are set when using GPS
+        if (locationMethod === 'gps' && donor.location) {
+            requestData.location_lat = donor.location.lat.toString();
+            requestData.location_lng = donor.location.lng.toString();
+            requestData.location_address = donor.location.address;
+            requestData.district = donor.location.district;
+            requestData.street = donor.location.street;
         }
+
+        // Convert empty strings and undefined values to null
+        Object.keys(requestData).forEach(key => {
+            if (requestData[key] === '' || requestData[key] === undefined) {
+                requestData[key] = null;
+            }
+        });
+
+        // Ensure numeric fields are properly typed
+        if (requestData.location_lat) requestData.location_lat = parseFloat(requestData.location_lat).toFixed(7);
+        if (requestData.location_lng) requestData.location_lng = parseFloat(requestData.location_lng).toFixed(7);
+
+        // Add debug logging
+        console.log("Full request data:", JSON.stringify(requestData, null, 2));
+
+        try {
+            // 4. API Request using Axios
+            const response = await axios.post(
+                'http://localhost:5000/api/donors/createDonor',
+                requestData,
+                {
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                }
+            );
+
+            // 5. Success Handling
+            console.log("Donor registration successful:", response.data);
+            navigate('/donor-thanks', {
+                state: {
+                    donorId: response.data.donorId,
+                    message: "Thank you for registering as a donor!"
+                }
+            });
+
+        } catch (error) {
+            // Log detailed error information
+            console.error("API Error Response:", error.response?.data);
+            console.error("Status Code:", error.response?.status);
+            console.error("Full error details:", error);
+
+            // Show detailed error message to user
+            let errorMessage = 'An error occurred while submitting the form\n\n';
+            
+            if (error.response?.data?.missingFields) {
+                errorMessage += 'Missing required fields:\n';
+                error.response.data.missingFields.forEach(field => {
+                    errorMessage += `- ${field}\n`;
+                });
+            } else if (error.response?.data?.message) {
+                errorMessage += `Server message: ${error.response.data.message}\n`;
+            }
+            
+            // Log the complete error message
+            console.error("Complete error message:", errorMessage);
+            alert(errorMessage);
+
+            // Handle authentication error
+            if (error.response?.status === 401) {
+                auth.removeToken();
+                navigate('/login', { state: { from: 'donor-form' } });
+                return;
+            }
+
+            if (error.message.includes("token")) {
+                auth.removeToken();
+                navigate('/login');
+            }
+        }
+    } catch (outerError) {
+        console.error("Outer error:", outerError);
+        alert("An unexpected error occurred. Please try again.");
     }
 };
 
@@ -472,7 +607,7 @@ const DonorForm = () => {
               <label>Current Location:</label>
               <Gps location={donor.location} setLocation={handleLocationChange} />
               
-              {donor.location.lat && donor.location.lng ? (
+              {donor.location && donor.location.lat && donor.location.lng ? (
                 <>
                   <div className="location-details">
                     <p>Coordinates: {donor.location.lat.toFixed(6)}, {donor.location.lng.toFixed(6)}</p>
@@ -482,7 +617,9 @@ const DonorForm = () => {
                   </div>
                   {errors.location && <p className="error">{errors.location}</p>}
                 </>
-              ) : null}
+              ) : (
+                <p className="info-text">Click "Get Current Location" to set your location</p>
+              )}
             </div>
           )}
         </div>

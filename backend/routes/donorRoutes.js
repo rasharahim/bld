@@ -30,35 +30,142 @@ const { acceptBloodRequest } = donorStatusController;
 router.post('/createDonor', authMiddleware.authenticate, donorController.createDonor);
 router.get('/', authMiddleware.authenticate, donorController.getDonor); // Get single donor
 
+// Get donor status by user ID
+router.get('/user/:userId/status', authMiddleware.authenticate, async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT 
+        d.status,
+        d.id as donor_id,
+        d.user_id,
+        u.full_name,
+        u.blood_type,
+        d.created_at,
+        d.last_donation_date,
+        d.donation_gap_months
+      FROM donors d
+      INNER JOIN users u ON d.user_id = u.id
+      WHERE d.user_id = ?`,
+      [req.params.userId]
+    );
 
-// 🔒 Protected route for accepting a blood request
-router.post("/accept-request", authMiddleware.authenticate, donorStatusController.acceptBloodRequest);
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Donor not found'
+      });
+    }
 
-// ✅ Admin routes
-router.put('/:id/status', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.approveDonor);
-router.get('/all', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.getAllDonors);
+    // Check if the authenticated user is the donor or an admin
+    if (req.user.id !== parseInt(req.params.userId) && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to view this donor status'
+      });
+    }
 
-//router.get('/blood-requests', authMiddleware.authenticate, authMiddleware.authorizeAdmin, bloodRequestController.getAllBloodRequests);
+    res.json({
+      success: true,
+      status: rows[0].status,
+      donor: {
+        id: rows[0].donor_id,
+        fullName: rows[0].full_name,
+        bloodType: rows[0].blood_type,
+        registeredDate: rows[0].created_at,
+        lastDonationDate: rows[0].last_donation_date,
+        donationGapMonths: rows[0].donation_gap_months
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching donor status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch donor status',
+      error: error.message
+    });
+  }
+});
 
-// 🌍 Public route for nearby donors
-//router.get('/nearby', donorController.getNearbyDonors);
+// Get donor status by donor ID
+router.get('/:donorId/status', authMiddleware.authenticate, async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT 
+        d.status,
+        d.id as donor_id,
+        d.user_id,
+        u.full_name,
+        u.blood_type,
+        d.created_at,
+        d.last_donation_date,
+        d.donation_gap_months
+      FROM donors d
+      INNER JOIN users u ON d.user_id = u.id
+      WHERE d.id = ?`,
+      [req.params.donorId]
+    );
 
-// Get nearby blood requests
-router.get('/blood-requests', authMiddleware.authenticate, async (req, res) => {
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Donor not found'
+      });
+    }
+
+    // Check if the authenticated user is the donor or an admin
+    if (req.user.id !== rows[0].user_id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to view this donor status'
+      });
+    }
+
+    res.json({
+      success: true,
+      status: rows[0].status,
+      donor: {
+        id: rows[0].donor_id,
+        fullName: rows[0].full_name,
+        bloodType: rows[0].blood_type,
+        registeredDate: rows[0].created_at,
+        lastDonationDate: rows[0].last_donation_date,
+        donationGapMonths: rows[0].donation_gap_months
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching donor status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch donor status',
+      error: error.message
+    });
+  }
+});
+
+// Get nearby blood requests for a specific donor
+router.get('/:donorId/blood-requests', authMiddleware.authenticate, async (req, res) => {
   try {
     // First get the donor's location and blood type
     const [donor] = await db.execute(
-      `SELECT u.location_lat, u.location_lng, u.blood_type, d.status
+      `SELECT u.location_lat, u.location_lng, u.blood_type, d.status, d.user_id
        FROM users u
        INNER JOIN donors d ON u.id = d.user_id
-       WHERE u.id = ?`,
-      [req.user.id]
+       WHERE d.id = ?`,
+      [req.params.donorId]
     );
 
     if (!donor.length || donor[0].status !== 'approved') {
       return res.status(403).json({
         success: false,
         message: 'Only approved donors can view blood requests'
+      });
+    }
+
+    // Check if the authenticated user is the donor or an admin
+    if (req.user.id !== donor[0].user_id && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to view these blood requests'
       });
     }
 
@@ -118,33 +225,67 @@ router.get('/blood-requests', authMiddleware.authenticate, async (req, res) => {
   }
 });
 
-// Get donor status
-router.get('/status', authMiddleware.authenticate, async (req, res) => {
+// Accept blood request for a specific donor
+router.post('/:donorId/accept-request', authMiddleware.authenticate, async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      'SELECT status FROM donors WHERE user_id = ?',
-      [req.user.id]
+    const { requestId } = req.body;
+    const donorId = req.params.donorId;
+
+    // Check if the donor exists and is approved
+    const [donor] = await db.execute(
+      'SELECT user_id, status FROM donors WHERE id = ?',
+      [donorId]
     );
 
-    if (rows.length === 0) {
-      return res.json({
-        success: true,
-        status: 'not_registered'
+    if (!donor.length || donor[0].status !== 'approved') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only approved donors can accept requests'
+      });
+    }
+
+    // Check if the authenticated user is the donor
+    if (req.user.id !== donor[0].user_id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to accept this request'
+      });
+    }
+
+    // Update the receiver with the selected donor
+    const [result] = await db.execute(
+      'UPDATE receivers SET selected_donor_id = ? WHERE id = ? AND selected_donor_id IS NULL',
+      [donorId, requestId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Blood request not found or already accepted'
       });
     }
 
     res.json({
       success: true,
-      status: rows[0].status
+      message: 'Blood request accepted successfully'
     });
   } catch (error) {
-    console.error('Error fetching donor status:', error);
+    console.error('Error accepting blood request:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch donor status',
+      message: 'Failed to accept blood request',
       error: error.message
     });
   }
 });
+
+// ✅ Admin routes
+router.put('/:id/status', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.approveDonor);
+router.get('/all', authMiddleware.authenticate, authMiddleware.authorizeAdmin, donorController.getAllDonors);
+
+//router.get('/blood-requests', authMiddleware.authenticate, authMiddleware.authorizeAdmin, bloodRequestController.getAllBloodRequests);
+
+// 🌍 Public route for nearby donors
+//router.get('/nearby', donorController.getNearbyDonors);
 
 module.exports = router;
