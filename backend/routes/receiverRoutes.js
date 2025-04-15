@@ -124,15 +124,13 @@ router.put('/:requestId/status', authMiddleware.authenticate, receiverController
 router.delete('/:requestId', authMiddleware.authenticate, receiverController.deleteRequest);
 
 // Get receiver request by ID
+// Get receiver request by ID
 router.get('/request/:id', authenticateToken, async (req, res) => {
-  console.log('Fetching request details for ID:', req.params.id);
-  const connection = await db.getConnection();
-  
   try {
-    const [rows] = await connection.execute(
-      `SELECT r.*, u.full_name, u.email, u.phone_number
+    const [rows] = await db.execute(
+      `SELECT r.*, u.full_name, u.phone_number
        FROM receivers r
-       LEFT JOIN users u ON r.user_id = u.id
+       JOIN users u ON r.user_id = u.id
        WHERE r.id = ?`,
       [req.params.id]
     );
@@ -140,12 +138,12 @@ router.get('/request/:id', authenticateToken, async (req, res) => {
     if (rows.length === 0) {
       return res.status(404).json({
         success: false,
-        error: 'Request not found'
+        message: 'Request not found'
       });
     }
 
     const request = rows[0];
-    return res.status(200).json({
+    return res.json({
       success: true,
       request: {
         id: request.id,
@@ -154,25 +152,16 @@ router.get('/request/:id', authenticateToken, async (req, res) => {
         status: request.status,
         fullName: request.full_name,
         phoneNumber: request.phone_number,
-        reasonForRequest: request.reason_for_request,
-        address: request.address,
         district: request.district,
-        state: request.state,
-        country: request.country,
-        prescriptionPath: request.prescription_path,
-        locationLat: request.location_lat,
-        locationLng: request.location_lng,
-        createdAt: request.created_at
+        state: request.state
       }
     });
   } catch (error) {
-    console.error('Error fetching request details:', error);
+    console.error('Error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch request details'
+      message: 'Failed to fetch request details'
     });
-  } finally {
-    connection.release();
   }
 });
 
@@ -360,64 +349,52 @@ router.post('/complete-donation', authMiddleware.authenticate, async (req, res) 
   }
 });
 
-// Replace the problematic location-donors route with this fixed version
+// Get matching donors
 router.get('/:requestId/location-donors', authenticateToken, async (req, res) => {
   try {
     const { requestId } = req.params;
-    console.log('Fetching donors for request:', requestId);
 
-    // Get receiver's details
-    const [receiverRows] = await db.execute(
-      `SELECT blood_type, district, state 
-       FROM receivers 
-       WHERE id = ?`,
+    // Get receiver's blood type and location
+    const [receiver] = await db.execute(
+      `SELECT blood_type, district, state FROM receivers WHERE id = ?`,
       [requestId]
     );
 
-    if (receiverRows.length === 0) {
+    if (!receiver[0]) {
       return res.status(404).json({
         success: false,
         message: 'Request not found'
       });
     }
 
-    const receiver = receiverRows[0];
-    console.log('Receiver details:', receiver);
-
-    // Find matching donors based on blood type and location
+    // Find matching donors
     const [donors] = await db.execute(
       `SELECT 
-        u.id,
+        d.id,
         u.full_name as name,
-        d.blood_type,
-        u.phone_number as phone,
+        u.blood_type as bloodType,
+        u.phone_number as contact,
         d.district,
-        d.state,
-        d.address
+        d.state
        FROM donors d
        JOIN users u ON d.user_id = u.id
-       WHERE d.blood_type = ?
+       WHERE u.blood_type = ?
        AND d.district = ?
        AND d.state = ?
-       AND d.status = 'active'
-       LIMIT 50`,
-      [receiver.blood_type, receiver.district, receiver.state]
+       AND d.status = 'active'`,
+      [receiver[0].blood_type, receiver[0].district, receiver[0].state]
     );
-
-    console.log('Found matching donors:', donors.length);
 
     return res.json({
       success: true,
-      donors: donors,
-      matchType: 'location-match'
+      donors: donors
     });
 
   } catch (error) {
-    console.error('Error finding matching donors:', error);
+    console.error('Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch donors',
-      error: error.message
+      message: 'Failed to fetch donors'
     });
   }
 });

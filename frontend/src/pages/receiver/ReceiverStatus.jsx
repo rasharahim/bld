@@ -7,113 +7,94 @@ const ReceiverStatus = () => {
   const { requestId } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [requestDetails, setRequestDetails] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [donors, setDonors] = useState([]);
 
   useEffect(() => {
-    fetchRequestAndDonors();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        console.log('Fetching requests...');
+        
+        // Fetch request details
+        const requestResponse = await axios.get(`http://localhost:5000/api/receivers/request/${requestId}`);
+        console.log('Raw request data:', requestResponse.data);
+        setRequests(requestResponse.data);
+
+        // Fetch donors
+        console.log('Fetching donors for request:', requestId);
+        const donorsResponse = await axios.get(`http://localhost:5000/api/receivers/${requestId}/location-donors`);
+        console.log('Raw donor data:', donorsResponse.data);
+        setDonors(Array.isArray(donorsResponse.data) ? donorsResponse.data : []);
+        
+        setLoading(false);
+      } catch (err) {
+        console.error('Error:', err);
+        setError('Failed to load data');
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [requestId]);
-
-  const fetchRequestAndDonors = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // First fetch request details
-      console.log('Fetching request details...');
-      const requestResponse = await axios.get(`http://localhost:5000/api/receivers/request/${requestId}`);
-      console.log('Request details response:', requestResponse.data);
-      
-      if (!requestResponse.data.success) {
-        throw new Error(requestResponse.data.message || 'Failed to fetch request details');
-      }
-      
-      setRequestDetails(requestResponse.data.request);
-
-      // Then fetch matching donors
-      console.log('Fetching matching donors...');
-      const donorsResponse = await axios.get(`http://localhost:5000/api/receivers/${requestId}/location-donors`);
-      console.log('Matching donors response:', donorsResponse.data);
-      
-      if (!donorsResponse.data.success) {
-        throw new Error(donorsResponse.data.message || 'Failed to fetch matching donors');
-      }
-
-      setDonors(donorsResponse.data.donors || []);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      setError(err.response?.data?.message || err.message || 'An error occurred while fetching data');
-      setLoading(false);
-    }
-  };
 
   const handleDonorSelection = async (donorId) => {
     try {
-      const response = await axios.post(`http://localhost:5000/api/receivers/select-donor`, {
+      await axios.post('http://localhost:5000/api/receivers/select-donor', {
         requestId,
         donorId
       });
-
-      if (response.data.success) {
-        // Refresh the data to show updated status
-        fetchRequestAndDonors();
-      } else {
-        setError(response.data.message || 'Failed to select donor');
-      }
+      window.location.reload();
     } catch (err) {
-      console.error('Error selecting donor:', err);
-      setError(err.response?.data?.message || err.message || 'Failed to select donor');
+      setError('Failed to select donor');
     }
   };
 
-  const getStatusClass = (status) => {
-    return `status ${status.toLowerCase()}`;
-  };
+  if (loading) return <div className="loading">Loading...</div>;
+  if (error) return <div className="error">{error}</div>;
+  if (!requests || requests.length === 0) return <div className="error">No request details found</div>;
 
-  if (loading) {
-    return <div className="loading">Loading request details...</div>;
-  }
-
-  if (error) {
-    return <div className="error">{error}</div>;
-  }
+  const request = requests[0];
+  console.log('Rendering with request:', request);
+  console.log('Rendering with donors:', donors);
 
   return (
-    <div className="donor-list-container">
+    <div className="receiver-status-container">
       <div className="request-details">
         <h2>Blood Request #{requestId}</h2>
         <div className="request-info">
-          <p><strong>Receiver Name:</strong> {requestDetails?.fullName || 'Loading...'}</p>
-          <p><strong>Blood Type Needed:</strong> {requestDetails?.bloodType || 'Loading...'}</p>
-          <p><strong>Status:</strong> <span className={`status ${requestDetails?.status?.toLowerCase()}`}>{requestDetails?.status || 'Loading...'}</span></p>
+          <p><strong>Receiver Name:</strong> {request.fullName}</p>
+          <p><strong>Blood Type:</strong> {request.bloodType}</p>
+          <p><strong>Status:</strong> 
+            <span className={`status ${request.status?.toLowerCase()}`}>
+              {request.status}
+            </span>
+          </p>
+          <p><strong>Location:</strong> ernakulam, Kerala, India</p>
         </div>
       </div>
 
       <h2>Available Donors in Your Area</h2>
-      {loading ? (
-        <div className="loading">Loading donors...</div>
-      ) : error ? (
-        <div className="error">{error}</div>
-      ) : donors.length === 0 ? (
-        <div className="no-donors">No matching donors found in your area.</div>
-      ) : (
+      {donors && donors.length > 0 ? (
         <div className="donor-list">
           {donors.map((donor) => (
             <div key={donor.id} className="donor-card">
-              <h3>{donor.name}</h3>
-              <p><strong>Blood Type:</strong> {donor.blood_type}</p>
-              <p><strong>Contact:</strong> {donor.phone}</p>
-              <p><strong>Location:</strong> {donor.district}, {donor.state}</p>
+              <p><strong>Name:</strong> {donor.name}</p>
+              <p><strong>Blood Type:</strong> {donor.bloodType}</p>
+              <p><strong>Contact:</strong> {donor.contact}</p>
+              <p><strong>Location:</strong> {donor.district}, Kerala</p>
               <button
                 onClick={() => handleDonorSelection(donor.id)}
-                disabled={requestDetails?.status !== 'PENDING'}
+                className="select-donor-btn"
+                disabled={request.status !== 'PENDING'}
               >
                 Select Donor
               </button>
             </div>
           ))}
         </div>
+      ) : (
+        <div className="no-donors">No matching donors found</div>
       )}
     </div>
   );
