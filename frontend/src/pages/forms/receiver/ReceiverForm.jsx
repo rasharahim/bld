@@ -12,7 +12,7 @@ const ReceiverForm = () => {
     full_name: '',
     age: '',
     blood_type: '',
-    contact_number: '',
+    phone_number: '',
     reason_for_request: '',
     country: 'India',
     state: 'Kerala',
@@ -60,7 +60,7 @@ const ReceiverForm = () => {
   const validateForm = () => {
     const newErrors = {};
     const requiredFields = [
-      'full_name', 'age', 'blood_type', 'contact_number',
+      'full_name', 'age', 'blood_type', 'phone_number',
       'reason_for_request', 'district', 'address'
     ];
 
@@ -75,9 +75,9 @@ const ReceiverForm = () => {
       newErrors.age = 'Please enter a valid age';
     }
 
-    // Validate contact number
-    if (formData.contact_number && !/^\d{10}$/.test(formData.contact_number)) {
-      newErrors.contact_number = 'Contact number must be 10 digits';
+    // Validate phone number
+    if (formData.phone_number && !/^\d{10}$/.test(formData.phone_number)) {
+      newErrors.phone_number = 'Phone number must be 10 digits';
     }
 
     setErrors(newErrors);
@@ -90,17 +90,31 @@ const ReceiverForm = () => {
 
     setIsSubmitting(true);
     try {
+      console.log('Submitting form data:', formData);
+      
       const formDataToSend = new FormData();
       
       // Append all form fields
       Object.keys(formData).forEach(key => {
-        formDataToSend.append(key, formData[key]);
+        if (formData[key]) { // Only append non-empty values
+          // Ensure we're using the correct field name
+          const fieldName = key === 'phone_number' ? 'phone_number' : key;
+          formDataToSend.append(fieldName, formData[key]);
+        }
       });
+
+      // Append location data if available
+      if (formData.location_lat && formData.location_lng) {
+        formDataToSend.append('location_lat', formData.location_lat);
+        formDataToSend.append('location_lng', formData.location_lng);
+      }
 
       // Append prescription file if exists
       if (prescription) {
         formDataToSend.append('prescription', prescription);
       }
+
+      console.log('Sending request with form data:', Object.fromEntries(formDataToSend));
 
       const response = await axios.post(
         'http://localhost:5000/api/receivers/create-request',
@@ -113,16 +127,25 @@ const ReceiverForm = () => {
         }
       );
 
-      console.log("Receiver request successful:", response.data);
-      navigate('/receiver/thanks', {
-        state: {
-          requestId: response.data.data.id,
-          message: "Thank you for submitting your blood request!"
-        }
-      });
+      if (response.data.success) {
+        console.log("Receiver request successful:", response.data);
+        navigate('/receiver/thanks', {
+          state: {
+            requestId: response.data.data.id,
+            message: response.data.data.message
+          }
+        });
+      } else {
+        throw new Error(response.data.message || 'Failed to submit blood request');
+      }
     } catch (error) {
-      console.error('Submission error:', error);
-      alert(error.response?.data?.message || 'Failed to submit blood request');
+      console.error('Detailed submission error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        stack: error.stack
+      });
+      alert(error.response?.data?.message || error.message || 'Failed to submit blood request');
     } finally {
       setIsSubmitting(false);
     }
@@ -178,15 +201,15 @@ const ReceiverForm = () => {
         </div>
 
         <div className="form-group">
-          <label>Contact Number</label>
+          <label>Phone Number</label>
           <input
             type="tel"
-            name="contact_number"
-            value={formData.contact_number}
+            name="phone_number"
+            value={formData.phone_number}
             onChange={handleChange}
-            className={errors.contact_number ? 'error' : ''}
+            className={errors.phone_number ? 'error' : ''}
           />
-          {errors.contact_number && <span className="error-message">{errors.contact_number}</span>}
+          {errors.phone_number && <span className="error-message">{errors.phone_number}</span>}
         </div>
 
         <div className="form-group">

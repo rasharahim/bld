@@ -207,7 +207,7 @@ const donorController = {
         SELECT 
           r.*,
           u.full_name as requester_name,
-          u.contact_number as requester_contact,
+          u.phone_number as requester_contact,
           (
             6371 * acos(
               cos(radians(?)) * cos(radians(r.location_lat)) *

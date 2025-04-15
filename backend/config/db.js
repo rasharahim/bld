@@ -27,9 +27,9 @@ const execute = async (sql, params = []) => {
     console.log('SQL:', sql);
     console.log('Parameters:', params);
     
-    const [results] = await connection.execute(sql, params);
-    console.log('Query successful, result length:', Array.isArray(results) ? results.length : 1);
-    return [results];
+    const result = await connection.execute(sql, params);
+    console.log('Query successful, result length:', Array.isArray(result[0]) ? result[0].length : 1);
+    return result;
   } catch (error) {
     console.error('=== Database Error ===');
     console.error('Error type:', error.name);
@@ -78,14 +78,6 @@ const testConnection = async () => {
     throw error;
   }
 };
-
-// Test connection on startup
-testConnection()
-  .then(() => console.log('Database connection pool initialized successfully'))
-  .catch(err => {
-    console.error('Failed to initialize database connection pool:', err);
-    process.exit(1);
-  });
 
 module.exports = {
   pool,

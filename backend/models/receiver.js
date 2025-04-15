@@ -20,7 +20,7 @@ class Receiver {
     } = receiverData;
 
     const sql = `
-      INSERT INTO receivers (
+      INSERT INTO blood_requests (
         user_id, full_name, age, blood_type, contact_number,
         country, state, district, address, location_lat,
         location_lng, location_address, reason_for_request, prescription_path
@@ -53,7 +53,7 @@ class Receiver {
   }
 
   static async getAll() {
-    const sql = 'SELECT * FROM receivers ORDER BY created_at DESC';
+    const sql = 'SELECT * FROM blood_requests ORDER BY created_at DESC';
     try {
       const [rows] = await db.execute(sql);
       return rows;
@@ -82,7 +82,7 @@ class Receiver {
             sin(radians(r.location_lat)) * sin(radians(d.location_lat))
           )
         ) AS distance_km
-      FROM receivers r
+      FROM blood_requests r
       JOIN users u ON r.user_id = u.id
       LEFT JOIN donors d ON r.selected_donor_id = d.id
       WHERE r.id = ?
@@ -106,7 +106,7 @@ class Receiver {
   }
 
   static async getByUserId(userId) {
-    const sql = 'SELECT * FROM receivers WHERE user_id = ? ORDER BY created_at DESC';
+    const sql = 'SELECT * FROM blood_requests WHERE user_id = ? ORDER BY created_at DESC';
     try {
       const [rows] = await db.execute(sql, [userId]);
       return rows;
@@ -116,7 +116,7 @@ class Receiver {
   }
 
   static async updateStatus(id, status) {
-    const sql = 'UPDATE receivers SET status = ? WHERE id = ?';
+    const sql = 'UPDATE blood_requests SET status = ? WHERE id = ?';
     try {
       const [result] = await db.execute(sql, [status, id]);
       return result.affectedRows > 0;

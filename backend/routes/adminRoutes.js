@@ -241,4 +241,225 @@ router.put('/receiver-requests/:id/status', authenticateToken, isAdmin, async (r
   }
 });
 
+// Get matching donors for a blood request
+router.get('/matching-donors/:requestId', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    // Get request details including location information and receiver name
+    const [request] = await db.execute(
+      `SELECT r.*, u.full_name as receiver_name 
+       FROM receivers r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.id = ?`,
+      [requestId]
+    );
+
+    if (!request.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    // Find matching donors based on blood type and location
+    const [donors] = await db.execute(
+      `SELECT 
+        d.id, 
+        u.full_name, 
+        u.phone_number, 
+        d.blood_type, 
+        d.district,
+        d.state,
+        d.country,
+        d.last_donation_date,
+        CASE 
+          WHEN d.district = ? AND d.state = ? AND d.country = ? THEN 'Same District'
+          WHEN d.state = ? AND d.country = ? THEN 'Same State'
+          WHEN d.country = ? THEN 'Same Country'
+        END as location_match
+       FROM donors d
+       JOIN users u ON d.user_id = u.id
+       WHERE d.status = 'active'
+       AND d.blood_type = ?
+       AND (
+         (d.district = ? AND d.state = ? AND d.country = ?) OR  -- Same district
+         (d.state = ? AND d.country = ?) OR                     -- Same state
+         (d.country = ?)                                        -- Same country
+       )
+       AND d.id NOT IN (
+         SELECT COALESCE(selected_donor_id, 0)
+         FROM receivers 
+         WHERE selected_donor_id IS NOT NULL
+         AND status NOT IN ('completed', 'rejected')
+       )
+       ORDER BY 
+         CASE 
+           WHEN d.district = ? THEN 1  -- Prioritize same district
+           WHEN d.state = ? THEN 2     -- Then same state
+           ELSE 3                      -- Then same country
+         END,
+         d.last_donation_date ASC      -- Prioritize donors who haven't donated recently
+       `,
+      [
+        // For CASE statement
+        request[0].district, request[0].state, request[0].country,
+        request[0].state, request[0].country,
+        request[0].country,
+        // For WHERE clause
+        request[0].blood_type,
+        request[0].district, request[0].state, request[0].country,
+        request[0].state, request[0].country,
+        request[0].country,
+        // For ORDER BY
+        request[0].district,
+        request[0].state
+      ]
+    );
+
+    res.json({
+      success: true,
+      request: {
+        id: request[0].id,
+        receiver_name: request[0].receiver_name,
+        blood_type: request[0].blood_type,
+        location: {
+          district: request[0].district,
+          state: request[0].state,
+          country: request[0].country
+        }
+      },
+      donors: donors.map(donor => ({
+        ...donor,
+        match_level: donor.location_match,
+        distance_info: `${donor.location_match} - ${donor.district}, ${donor.state}, ${donor.country}`
+      }))
+    });
+  } catch (error) {
+    console.error('Error finding matching donors:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error finding matching donors',
+      error: error.message
+    });
+  }
+});
+
+// Assign donor to request
+router.post('/assign-donor', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { requestId, donorId } = req.body;
+
+    // Update receiver request with selected donor
+    const [result] = await db.execute(
+      'UPDATE receivers SET selected_donor_id = ?, status = "pending_donation" WHERE id = ?',
+      [donorId, requestId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    // Update donor status to indicate pending donation
+    await db.execute(
+      'UPDATE donors SET current_request_id = ? WHERE id = ?',
+      [requestId, donorId]
+    );
+
+    // Get donor and receiver details for notification
+    const [donorDetails] = await db.execute(
+      `SELECT u.full_name, u.phone_number
+       FROM donors d
+       JOIN users u ON d.user_id = u.id
+       WHERE d.id = ?`,
+      [donorId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Donor assigned successfully',
+      data: {
+        donor: donorDetails[0]
+      }
+    });
+  } catch (error) {
+    console.error('Error assigning donor:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning donor',
+      error: error.message
+    });
+  }
+});
+
+// Update donation status
+router.post('/donation-complete', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { requestId, donorId } = req.body;
+
+    // Update receiver request status
+    await db.execute(
+      'UPDATE receivers SET status = "completed" WHERE id = ?',
+      [requestId]
+    );
+
+    // Update donor status and clear current request
+    await db.execute(
+      'UPDATE donors SET current_request_id = NULL WHERE id = ?',
+      [donorId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Donation marked as complete'
+    });
+  } catch (error) {
+    console.error('Error updating donation status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating donation status',
+      error: error.message
+    });
+  }
+});
+
+router.get('/requests', async (req, res) => {
+  try {
+    const sql = `
+      SELECT r.*, u.full_name as requester_name, u.email as requester_email,
+             u.phone_number as requester_phone
+      FROM blood_requests r
+      JOIN users u ON r.user_id = u.id
+      ORDER BY r.created_at DESC`;
+    
+    const [requests] = await db.execute(sql);
+    res.json(requests);
+  } catch (error) {
+    console.error('Error fetching requests:', error);
+    res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+});
+
+router.patch('/requests/:requestId/status', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status } = req.body;
+
+    const sql = 'UPDATE blood_requests SET status = ? WHERE id = ?';
+    const [result] = await db.execute(sql, [status, requestId]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    res.json({ message: 'Request status updated successfully' });
+  } catch (error) {
+    console.error('Error updating request status:', error);
+    res.status(500).json({ error: 'Failed to update request status' });
+  }
+});
+
 module.exports = router; 

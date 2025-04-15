@@ -338,4 +338,54 @@ router.patch('/:donorId/status', authenticateToken, async (req, res) => {
   }
 });
 
+// Get donors from same location as receiver
+router.get('/:requestId/location-donors', authenticateToken, async (req, res) => {
+  const { requestId } = req.params;
+  
+  try {
+    // First get the request details to get location
+    const [request] = await db.execute(
+      'SELECT country, state, district, blood_type FROM blood_requests WHERE id = ?',
+      [requestId]
+    );
+
+    if (!request[0]) {
+      return res.status(404).json({
+        success: false,
+        message: 'Blood request not found'
+      });
+    }
+
+    const { country, state, district, blood_type } = request[0];
+
+    // Get donors from same location with matching blood type
+    const [donors] = await db.execute(
+      `SELECT d.id, u.full_name, u.phone_number, d.blood_type, 
+              d.district, d.state, d.country, d.last_donation_date
+       FROM donors d
+       JOIN users u ON d.user_id = u.id
+       WHERE d.country = ? 
+       AND d.state = ?
+       AND d.district = ?
+       AND d.blood_type = ?
+       AND d.status = 'active'
+       AND (d.last_donation_date IS NULL OR 
+            DATEDIFF(CURRENT_DATE, d.last_donation_date) >= 90)`,
+      [country, state, district, blood_type]
+    );
+
+    res.json({
+      success: true,
+      donors: donors
+    });
+
+  } catch (error) {
+    console.error('Error fetching location-based donors:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching donors'
+    });
+  }
+});
+
 module.exports = router;

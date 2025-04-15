@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, '../uploads/prescriptions');
@@ -83,7 +84,7 @@ router.get('/my-requests', authenticateToken, async (req, res) => {
         bloodType: row.blood_type,
         status: row.status,
         fullName: row.full_name,
-        contactNumber: row.contact_number,
+        phoneNumber: row.phone_number,
         reasonForRequest: row.reason_for_request,
         address: row.address,
         district: row.district,
@@ -152,7 +153,7 @@ router.get('/request/:id', authenticateToken, async (req, res) => {
         bloodType: request.blood_type,
         status: request.status,
         fullName: request.full_name,
-        contactNumber: request.contact_number,
+        phoneNumber: request.phone_number,
         reasonForRequest: request.reason_for_request,
         address: request.address,
         district: request.district,
@@ -175,63 +176,6 @@ router.get('/request/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Get nearby donors for a request
-router.get('/nearby-donors', authMiddleware.authenticate, async (req, res) => {
-  try {
-    const { bloodType, latitude, longitude } = req.query;
-    
-    if (!latitude || !longitude || !bloodType) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required parameters: bloodType, latitude, longitude'
-      });
-    }
-
-    // Convert coordinates to numbers
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
-
-    // Haversine formula in MySQL to calculate distance
-    const [donors] = await db.execute(`
-      SELECT 
-        d.id,
-        u.full_name as donor_name,
-        u.phone_number as donor_phone,
-        u.blood_type,
-        u.location_lat as latitude,
-        u.location_lng as longitude,
-        u.address,
-        (
-          6371 * acos(
-            cos(radians(?)) * cos(radians(u.location_lat)) *
-            cos(radians(u.location_lng) - radians(?)) +
-            sin(radians(?)) * sin(radians(u.location_lat))
-          )
-        ) AS distance
-      FROM donors d
-      INNER JOIN users u ON d.user_id = u.id
-      WHERE d.status = 'approved'
-        AND u.blood_type = ?
-        AND u.location_lat IS NOT NULL 
-        AND u.location_lng IS NOT NULL
-      HAVING distance <= 20
-      ORDER BY distance
-    `, [lat, lng, lat, bloodType]);
-
-    res.json({
-      success: true,
-      data: donors
-    });
-
-  } catch (error) {
-    console.error('Error fetching nearby donors:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch nearby donors',
-      error: error.message
-    });
-  }
-});
 
 // Create new receiver request
 router.post('/create-request', authenticateToken, upload.single('prescription'), async (req, res) => {
@@ -243,7 +187,7 @@ router.post('/create-request', authenticateToken, upload.single('prescription'),
 
     // Validate required fields
     const requiredFields = [
-      'full_name', 'age', 'blood_type', 'contact_number',
+      'full_name', 'age', 'blood_type', 'phone_number',
       'country', 'state', 'district', 'address', 'reason_for_request'
     ];
     
@@ -259,7 +203,7 @@ router.post('/create-request', authenticateToken, upload.single('prescription'),
 
     // Log the SQL query and values
     const sql = `INSERT INTO receivers (
-      id, user_id, full_name, age, blood_type, contact_number,
+      id, user_id, full_name, age, blood_type, phone_number,
       country, state, district, address,
       location_lat, location_lng, location_address,
       reason_for_request, prescription_path,
@@ -273,7 +217,7 @@ router.post('/create-request', authenticateToken, upload.single('prescription'),
       req.body.full_name,
       parseInt(req.body.age),
       req.body.blood_type,
-      req.body.contact_number,
+      req.body.phone_number,
       req.body.country,
       req.body.state,
       req.body.district,
@@ -411,6 +355,68 @@ router.post('/complete-donation', authMiddleware.authenticate, async (req, res) 
     res.status(500).json({
       success: false,
       message: 'Failed to complete donation',
+      error: error.message
+    });
+  }
+});
+
+// Replace the problematic location-donors route with this fixed version
+router.get('/:requestId/location-donors', authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    console.log('Fetching donors for request:', requestId);
+
+    // Get receiver's details
+    const [receiverRows] = await db.execute(
+      `SELECT blood_type, district, state 
+       FROM receivers 
+       WHERE id = ?`,
+      [requestId]
+    );
+
+    if (receiverRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Request not found'
+      });
+    }
+
+    const receiver = receiverRows[0];
+    console.log('Receiver details:', receiver);
+
+    // Find matching donors based on blood type and location
+    const [donors] = await db.execute(
+      `SELECT 
+        u.id,
+        u.full_name as name,
+        d.blood_type,
+        u.phone_number as phone,
+        d.district,
+        d.state,
+        d.address
+       FROM donors d
+       JOIN users u ON d.user_id = u.id
+       WHERE d.blood_type = ?
+       AND d.district = ?
+       AND d.state = ?
+       AND d.status = 'active'
+       LIMIT 50`,
+      [receiver.blood_type, receiver.district, receiver.state]
+    );
+
+    console.log('Found matching donors:', donors.length);
+
+    return res.json({
+      success: true,
+      donors: donors,
+      matchType: 'location-match'
+    });
+
+  } catch (error) {
+    console.error('Error finding matching donors:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch donors',
       error: error.message
     });
   }

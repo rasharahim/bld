@@ -1,0 +1,187 @@
+.receiver-status {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.receiver-status h2 {
+  color: #333;
+  margin-bottom: 2rem;
+  text-align: center;
+  font-size: 1.8rem;
+}
+
+.request-details {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.request-details h2 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+}
+
+.request-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+}
+
+.request-info p {
+  margin: 0;
+  padding: 8px 0;
+  color: #4a5568;
+}
+
+.status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.status.pending {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status.approved {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status.completed {
+  background-color: #e0e7ff;
+  color: #3730a3;
+}
+
+.status.rejected {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Status badges */
+[class^="status-"] {
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.9rem;
+  color: white;
+  display: inline-block;
+}
+
+.status-pending {
+  background-color: #ffc107;
+}
+
+.status-approved {
+  background-color: #28a745;
+}
+
+.status-matched {
+  background-color: #17a2b8;
+}
+
+.status-completed {
+  background-color: #6c757d;
+}
+
+.status-rejected {
+  background-color: #dc3545;
+}
+
+.receiver-status h3 {
+  color: #333;
+  margin: 2rem 0 1rem;
+  text-align: center;
+}
+
+.loading,
+.no-donors,
+.error {
+  text-align: center;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  color: #4a5568;
+  font-size: 1.1rem;
+}
+
+.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.donor-list-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 30px auto;
+}
+
+.donor-list-container h3 {
+  text-align: center;
+  color: #333;
+  margin: 20px 0;
+}
+
+.donor-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  padding: 10px;
+}
+
+.donor-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.donor-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.donor-card h3 {
+  color: #2d3748;
+  margin: 0 0 15px 0;
+  font-size: 1.2rem;
+}
+
+.donor-card p {
+  margin: 8px 0;
+  color: #4a5568;
+}
+
+.donor-card button {
+  width: 100%;
+  padding: 8px 16px;
+  margin-top: 15px;
+  background-color: #3182ce;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.donor-card button:hover:not(:disabled) {
+  background-color: #2c5282;
+}
+
+.donor-card button:disabled {
+  background-color: #cbd5e0;
+  cursor: not-allowed;
+}
+
+h2 {
+  color: #2d3748;
+  margin: 30px 0 20px;
+  font-size: 1.8rem;
+} 

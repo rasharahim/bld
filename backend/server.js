@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const db = require('./config/db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,16 +14,27 @@ const donorRoutes = require('./routes/donorRoutes');
 const receiverRoutes = require('./routes/receiverRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
-// Middleware
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log('\n=== New Request ===');
+  console.log('Time:', new Date().toISOString());
+  console.log('Method:', req.method);
+  console.log('Path:', req.path);
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+  console.log('Query:', req.query);
+  next();
+});
+
+// CORS configuration
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174'
-  ],
-  credentials: true
+  origin: ['http://localhost:5174', 'http://127.0.0.1:5174'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Body parsing middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -30,21 +42,34 @@ app.use(morgan('dev'));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Response logging middleware
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function(data) {
+    console.log('\n=== Response Data ===');
+    console.log('Status:', res.statusCode);
+    console.log('Data:', data);
+    return originalJson.call(this, data);
+  };
+  next();
+});
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const db = require('./config/db');
     await db.execute('SELECT 1');
     res.json({ 
       status: 'Server is running',
-      database: 'Connected'
+      database: 'Connected',
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('Database connection error:', error);
     res.status(500).json({ 
       status: 'Server is running',
       database: 'Error',
-      error: error.message
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -55,17 +80,44 @@ app.use('/api/donors', donorRoutes);
 app.use('/api/receivers', receiverRoutes);
 app.use('/api/admin', adminRoutes);
 
+// 404 handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.method} ${req.path} not found`
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
+  console.error('\n=== Error Handler ===');
+  console.error('Error:', err);
+  console.error('Stack:', err.stack);
+  
+  // Handle specific types of errors
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized access'
+    });
+  }
+
+  // Default error response
+  res.status(err.status || 500).json({
     success: false,
-    message: 'Something broke!',
-    error: err.message
+    message: err.message || 'Internal server error'
   });
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+db.testConnection()
+  .then(() => {
+    console.log('Database connection pool initialized successfully');
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Failed to initialize database connection pool:', err);
+    process.exit(1);
+  });
